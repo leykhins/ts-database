@@ -134,7 +134,8 @@ const dialogTenant = computed(() => {
         </TabsList>
       </Tabs>
 
-      <div class="flex items-center gap-3">
+      <!-- Search (220) + filter (200) exceed a phone's width, so they wrap. -->
+      <div class="flex flex-wrap items-center gap-3">
         <DsSearchField v-model="search" placeholder="Filter by name or room…" :width="220" />
         <Select v-model="level">
           <SelectTrigger size="sm" class="w-[200px]">

@@ -126,7 +126,7 @@ const total = computed(
       </Card>
 
       <div class="grid gap-5 lg:grid-cols-[1fr_300px]">
-        <div class="flex flex-col gap-3">
+        <div class="flex min-w-0 flex-col gap-3">
           <div v-if="filter" class="flex items-center gap-2">
             <Badge variant="brand">{{ LEVEL_LABEL[filter] }} only</Badge>
             <Button variant="ghost" size="sm" @click="filter = null">
@@ -185,7 +185,7 @@ const total = computed(
           </Table>
         </div>
 
-        <div class="flex flex-col gap-5">
+        <div class="flex min-w-0 flex-col gap-5">
           <Card class="h-fit">
             <CardContent class="flex flex-col gap-3 p-5">
               <span class="eyebrow">By floor</span>

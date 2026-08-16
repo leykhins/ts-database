@@ -552,7 +552,7 @@ async function openReport() {
 
       <!-- ------------------------------------------- Flagged / duties / etc -->
       <div class="grid gap-5 lg:grid-cols-[1.55fr_1fr] items-start">
-        <div class="flex flex-col gap-5">
+        <div class="flex min-w-0 flex-col gap-5">
           <!-- Flagged -->
           <Card>
             <CardContent class="flex flex-col gap-3 p-5">
@@ -732,7 +732,7 @@ async function openReport() {
           </Card>
         </div>
 
-        <div class="flex flex-col gap-5">
+        <div class="flex min-w-0 flex-col gap-5">
           <!-- Watch list: critical needs, banned guests, tonight's overnights -->
           <Card>
             <CardContent class="flex flex-col gap-3 p-5">

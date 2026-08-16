@@ -25,7 +25,12 @@ withDefaults(
         {{ description }}
       </p>
     </div>
-    <div v-if="$slots.actions" class="flex shrink-0 items-center gap-2">
+    <!--
+      The actions must be allowed to wrap. `shrink-0` here pushed the whole
+      page sideways on a phone rather than reflowing, which is what put a
+      horizontal scrollbar on every screen that uses this header.
+    -->
+    <div v-if="$slots.actions" class="flex flex-wrap items-center gap-2">
       <slot name="actions" />
     </div>
   </div>
