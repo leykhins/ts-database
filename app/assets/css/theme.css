@@ -1,0 +1,311 @@
+/* ============================================================
+   TS Database — Tailwind / shadcn bridge
+   ============================================================
+   shadcn-vue components are written against a fixed set of
+   semantic names (`bg-background`, `text-muted-foreground`,
+   `rounded-md`, `border-border`…). This file is the single place
+   those names are wired to the TS Database design tokens, so a
+   stock shadcn component comes out looking like TS Database
+   without editing the component.
+
+   Two kinds of mapping live here:
+
+   1. `:root` aliases — shadcn's semantic surface names pointed at
+      TS Database tokens. Names differ from the token names, so
+      these are plain references.
+
+   2. `@theme` literals — Tailwind's *namespaced* theme keys
+      (`--font-*`, `--text-*`, `--radius-*`) happen to share names
+      with TS Database tokens, so they cannot reference them
+      without a circular definition. These values are therefore
+      restated literally. They MUST stay in step with
+      `tokens/typography.css` and `tokens/spacing.css`, which are
+      the source of truth; the token files are vendored from the
+      Claude Design project and are deliberately never edited.
+   ============================================================ */
+
+:root {
+  /* ---- shadcn semantic surfaces ---- */
+  --background: var(--surface-app);
+  --foreground: var(--text-body);
+
+  --card: var(--surface-card);
+  --card-foreground: var(--text-strong);
+
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text-strong);
+
+  --primary: var(--brand);
+  --primary-foreground: var(--text-on-brand);
+
+  --secondary: var(--surface-sunken);
+  --secondary-foreground: var(--text-strong);
+
+  --muted: var(--surface-sunken);
+  --muted-foreground: var(--text-muted);
+
+  --accent: var(--surface-hover);
+  --accent-foreground: var(--text-strong);
+
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+
+  /* `--border` and `--ring` are already defined by tokens/colors.css and mean
+     exactly what shadcn means by them, so they are used as-is. */
+  --input: var(--border-strong);
+
+  /* ---- Sidebar (shadcn's sidebar block) — the dark rail ---- */
+  --sidebar: var(--surface-inverse);
+  --sidebar-foreground: var(--text-on-dark-muted);
+  --sidebar-primary: var(--emerald-400);
+  --sidebar-primary-foreground: var(--emerald-950);
+  --sidebar-accent: color-mix(in srgb, var(--emerald-400) 16%, transparent);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: var(--emerald-400);
+}
+
+@theme inline {
+  /* Colours — semantic */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--border-focus);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Colours — TS Database scales, so screens can reach for `text-teal-600`
+     and get the brand's teal rather than Tailwind's. */
+  --color-emerald-50: var(--emerald-50);
+  --color-emerald-100: var(--emerald-100);
+  --color-emerald-200: var(--emerald-200);
+  --color-emerald-400: var(--emerald-400);
+  --color-emerald-500: var(--emerald-500);
+  --color-emerald-600: var(--emerald-600);
+  --color-emerald-700: var(--emerald-700);
+  --color-emerald-950: var(--emerald-950);
+
+  --color-slate-0: var(--slate-0);
+  --color-slate-50: var(--slate-50);
+  --color-slate-100: var(--slate-100);
+  --color-slate-200: var(--slate-200);
+  --color-slate-300: var(--slate-300);
+  --color-slate-400: var(--slate-400);
+  --color-slate-500: var(--slate-500);
+  --color-slate-600: var(--slate-600);
+  --color-slate-700: var(--slate-700);
+  --color-slate-800: var(--slate-800);
+  --color-slate-900: var(--slate-900);
+  --color-slate-950: var(--slate-950);
+
+  --color-teal-50: var(--teal-50);
+  --color-teal-600: var(--teal-600);
+  --color-teal-700: var(--teal-700);
+  --color-blue-50: var(--blue-50);
+  --color-blue-600: var(--blue-600);
+  --color-blue-700: var(--blue-700);
+  --color-cyan-50: var(--cyan-50);
+  --color-cyan-600: var(--cyan-600);
+  --color-cyan-700: var(--cyan-700);
+  --color-indigo-600: var(--indigo-600);
+  --color-violet-600: var(--violet-600);
+  --color-rose-50: var(--rose-50);
+  --color-rose-600: var(--rose-600);
+  --color-rose-700: var(--rose-700);
+  --color-amber-50: var(--amber-50);
+  --color-amber-500: var(--amber-500);
+  --color-amber-600: var(--amber-600);
+  --color-amber-700: var(--amber-700);
+  --color-green-600: var(--green-600);
+  --color-green-700: var(--green-700);
+  --color-red-600: var(--red-600);
+  --color-red-700: var(--red-700);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  /* Text roles, so `text-strong` / `text-muted` read the same in markup as
+     they do in the design system's prose. */
+  --color-text-strong: var(--text-strong);
+  --color-text-body: var(--text-body);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-text-on-dark: var(--text-on-dark);
+  --color-text-on-dark-muted: var(--text-on-dark-muted);
+
+  --color-surface-app: var(--surface-app);
+  --color-surface-card: var(--surface-card);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-inverse: var(--surface-inverse);
+}
+
+/* ------------------------------------------------------------------
+   Namespaced keys restated literally — see the note at the top.
+   Source of truth: tokens/typography.css and tokens/spacing.css.
+   ------------------------------------------------------------------ */
+@theme {
+  /* tokens/typography.css → families */
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* tokens/typography.css → scale */
+  --text-2xs: 0.6875rem;   /* 11px */
+  --text-xs: 0.75rem;      /* 12px */
+  --text-sm: 0.8125rem;    /* 13px */
+  --text-base: 0.875rem;   /* 14px */
+  --text-md: 1rem;         /* 16px */
+  --text-lg: 1.125rem;     /* 18px */
+  --text-xl: 1.375rem;     /* 22px */
+  --text-2xl: 1.75rem;     /* 28px */
+  --text-3xl: 2.25rem;     /* 36px */
+  --text-4xl: 3rem;        /* 48px */
+
+  /* tokens/spacing.css → radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+
+  /* tokens/spacing.css → tracking */
+  --tracking-tight: -0.02em;
+  --tracking-snug: -0.01em;
+  --tracking-wide: 0.04em;
+  --tracking-caps: 0.08em;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Link colour, scoped.
+
+   `tokens/base.css` paints every `<a>` with `--text-link`, which is right
+   for a link inside prose and wrong for app chrome: the sidebar rows, table
+   rows and cards are whole-area links that must take their colour from the
+   surface they sit on. Because the token files are imported unlayered, that
+   rule also outranks every Tailwind `text-*` utility, so a `<a class="…">`
+   in the dark rail came out link-blue on navy no matter what it was given.
+
+   Links inherit by default; prose links opt back in with `.link`. This rule
+   is deliberately unlayered so it beats `base.css` rather than losing to it.
+   ------------------------------------------------------------------ */
+a {
+  color: inherit;
+}
+a:hover {
+  text-decoration: none;
+}
+
+.link {
+  color: var(--text-link);
+}
+.link:hover {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------
+   Motion
+
+   The design system's rule is that hover changes colour and border and
+   never position — no card lift, no scale. So the movement in this app is
+   reserved for things that genuinely arrive or leave: a dialog opening, a
+   route changing, a skeleton waiting, a button working. Everything is
+   short, eased with the system's own curves, and `tokens/base.css`
+   already collapses all of it under `prefers-reduced-motion`.
+   ------------------------------------------------------------------ */
+
+@keyframes ts-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@keyframes ts-rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ts-spin {
+  to { transform: rotate(360deg); }
+}
+
+/**
+ * A light sweeping across a placeholder. Reads as "loading" where a pulse
+ * reads as "broken", and it is neutral rather than brand-tinted so a screen
+ * full of skeletons does not look like a screen full of content.
+ */
+.ts-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--slate-100) 0%,
+    var(--slate-200) 20%,
+    var(--slate-100) 40%,
+    var(--slate-100) 100%
+  );
+  background-size: 200% 100%;
+  animation: ts-shimmer 1.4s linear infinite;
+}
+
+/** Content that has just arrived: a short fade with a few pixels of travel. */
+.ts-rise {
+  animation: ts-rise var(--dur-base) var(--ease-out) both;
+}
+
+.ts-spin {
+  animation: ts-spin 700ms linear infinite;
+}
+
+/* Route changes: the same arrival, applied by Nuxt's page transition. */
+.page-enter-active,
+.page-leave-active {
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.page-leave-to {
+  opacity: 0;
+}
+
+/* An in-page jump should not teleport, and it should clear the sticky bar. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+:target,
+[id] {
+  scroll-margin-top: calc(var(--topbar-h) + var(--space-4));
+}

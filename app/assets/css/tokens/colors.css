@@ -1,0 +1,109 @@
+/* ============================================================
+   TS Database — Color System
+   A bright, high-contrast, category-driven palette for a
+   supportive-housing operations dashboard. Each functional
+   area (Tenants, Rents, Checks, …) owns an accent hue so
+   employees navigate by color as well as by label.
+   ============================================================ */
+:root {
+  /* ---- Brand / Primary : Emerald (evolves the original TS green) ---- */
+  --emerald-50:  #ecfdf5;
+  --emerald-100: #d1fae5;
+  --emerald-200: #a7f3d0;
+  --emerald-300: #6ee7b7;
+  --emerald-400: #34d399;
+  --emerald-500: #12b981;
+  --emerald-600: #07925f;
+  --emerald-700: #0a7350;
+  --emerald-800: #0c5b42;
+  --emerald-900: #0a4a37;
+  --emerald-950: #032b20;
+
+  /* ---- Neutrals : Slate (cool, calm, readable) ---- */
+  --slate-0:   #ffffff;
+  --slate-50:  #f8f9fb;
+  --slate-100: #f1f3f7;
+  --slate-200: #e6e9ef;
+  --slate-300: #d4dae3;
+  --slate-400: #97a3b6;
+  --slate-500: #66748c;
+  --slate-600: #495569;
+  --slate-700: #353f50;
+  --slate-800: #222a38;
+  --slate-900: #161c27;
+  --slate-950: #0c1018;
+
+  /* ---- Category accents (each functional area) ---- */
+  /* Tenant Information — Teal */
+  --teal-50:  #effcf9;  --teal-100: #cdf4ec;  --teal-500: #0d9488;  --teal-600: #0c7d73;  --teal-700: #0b655e;
+  /* Rents — Blue */
+  --blue-50:  #eef4ff;  --blue-100: #d6e4ff;  --blue-500: #2f6fed;  --blue-600: #1f57cf;  --blue-700: #1a45a6;
+  /* Security Deposits — Cyan */
+  --cyan-50:  #ecfbff;  --cyan-100: #c9f1fb;  --cyan-500: #0891b2;  --cyan-600: #0a7795;  --cyan-700: #0b5f78;
+  /* Tenant Roster / Support diagrams — Indigo */
+  --indigo-50: #eef0ff; --indigo-100: #dee1fc; --indigo-500: #4f46e5; --indigo-600: #4035cc; --indigo-700: #332aa3;
+  /* Auxiliary Reports — Violet */
+  --violet-50: #f5f1ff; --violet-100: #e7defc; --violet-500: #7c3aed; --violet-600: #6a27d6; --violet-700: #561eab;
+  /* Critical Needs — Rose */
+  --rose-50:  #fff0f3;  --rose-100: #ffd9e0;  --rose-500: #e11d48;  --rose-600: #c4123a;  --rose-700: #9d0f30;
+  /* Support Levels / Maintenance — Amber */
+  --amber-50: #fff8eb;  --amber-100: #fdecc8;  --amber-500: #e08a00;  --amber-600: #c06f00;  --amber-700: #9a5600;
+
+  /* ---- Semantic state colors ---- */
+  --green-50: #ecfdf3; --green-100: #d1fadf; --green-500: #16a34a; --green-600: #138a3f; --green-700: #106531;
+  --red-50:   #fef2f2; --red-100:   #fee2e2; --red-500:   #e23b3b; --red-600:   #c52d2d; --red-700:   #9e2222;
+  --yellow-50: #fffaeb; --yellow-100: #fdeec3; --yellow-500: #eab308; --yellow-600: #ca9a04; --yellow-700: #a07807;
+
+  /* ============================================================
+     SEMANTIC ALIASES — reach for these in components, not the
+     raw scale values above.
+     ============================================================ */
+
+  /* Brand */
+  --brand:           var(--emerald-600);
+  --brand-strong:    var(--emerald-700);
+  --brand-soft:      var(--emerald-50);
+  --brand-soft-200:  var(--emerald-100);
+  --brand-contrast:  #ffffff;
+
+  /* Surfaces */
+  --surface-app:      var(--slate-50);   /* page background            */
+  --surface-card:     var(--slate-0);    /* cards, panels              */
+  --surface-sunken:   var(--slate-100);  /* wells, inset areas         */
+  --surface-raised:   var(--slate-0);    /* popovers, menus            */
+  --surface-inverse:  var(--slate-900);  /* dark sidebar / topbar      */
+  --surface-inverse-2:var(--slate-800);
+  --surface-hover:    var(--slate-100);
+  --surface-active:   var(--slate-200);
+
+  /* Text */
+  --text-strong:   var(--slate-900);  /* headings, key numbers   */
+  --text-body:     var(--slate-700);  /* default body            */
+  --text-muted:    var(--slate-500);  /* secondary, captions     */
+  --text-subtle:   var(--slate-400);  /* placeholders, disabled  */
+  --text-on-brand: #ffffff;
+  --text-on-dark:  var(--slate-100);
+  --text-on-dark-muted: var(--slate-400);
+  --text-link:     var(--blue-600);
+
+  /* Borders & dividers */
+  --border:        var(--slate-200);
+  --border-strong: var(--slate-300);
+  --border-subtle: var(--slate-100);
+  --border-focus:  var(--emerald-500);
+  --divider:       var(--slate-200);
+
+  /* Semantic states */
+  --success:       var(--green-600);  --success-soft: var(--green-50);   --success-border: var(--green-100);
+  --warning:       var(--amber-600);  --warning-soft: var(--amber-50);   --warning-border: var(--amber-100);
+  --danger:        var(--red-600);    --danger-soft:  var(--red-50);     --danger-border:  var(--red-100);
+  --info:          var(--blue-600);   --info-soft:    var(--blue-50);    --info-border:    var(--blue-100);
+
+  /* Focus ring */
+  --ring:          color-mix(in srgb, var(--emerald-500) 30%, transparent);
+
+  /* Washes — the only way color touches a surface: a few percent of the
+     hue mixed into the card, never a pastel block. */
+  --wash-strength: 7%;
+  --border-hover:  var(--slate-300);
+}

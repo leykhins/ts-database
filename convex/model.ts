@@ -1,0 +1,444 @@
+import { getAuthUserId } from '@convex-dev/auth/server'
+import type { Doc, Id } from './_generated/dataModel'
+import type { QueryCtx, MutationCtx } from './_generated/server'
+
+/** A room check older than this is "due". Policy: weekly room checks. */
+export const CHECK_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000
+
+export type RoomStatus =
+  | 'ok'
+  | 'rent'
+  | 'check'
+  | 'deposit'
+  | 'critical'
+  | 'vacant'
+
+/**
+ * Every function in this app is staff-only. Callers get the user document, so
+ * downstream code can attribute a payment or a completed check to a person —
+ * "who posted this" is not optional in a housing ledger.
+ */
+export async function requireStaff(
+  ctx: QueryCtx | MutationCtx,
+): Promise<Doc<'users'>> {
+  const userId = await getAuthUserId(ctx)
+  if (userId === null) throw new Error('Not signed in.')
+  const user = await ctx.db.get(userId)
+  if (user === null) throw new Error('Signed-in user no longer exists.')
+  return user
+}
+
+/* ------------------------------------------------------------------------
+   Roles and capabilities
+
+   Reading is open to all staff: someone covering a shift needs the whole
+   picture, and hiding a resident's balance from the person at the desk helps
+   nobody. Writing is not. Each capability below names a kind of write, and the
+   table says which roles may perform it. This map is the whole permission
+   model — change a line here and the server, the nav and the disabled buttons
+   all follow.
+
+     config       buildings, rooms, staff accounts
+     site-config  how one building runs: meal sittings, laundry hours, limits
+     money    rent payments, monthly charges, deposit movements
+     care     support levels, critical needs
+     tenancy  intake, room moves, exits, editing a resident's record
+     checks   room and building check sign-off
+   ------------------------------------------------------------------------ */
+
+export type Capability =
+  | 'config'
+  | 'site-config'
+  | 'money'
+  | 'care'
+  | 'tenancy'
+  | 'checks'
+  | 'wellness'
+export type Role =
+  | 'admin'
+  | 'supervisor'
+  | 'front-desk'
+  | 'care-staff'
+  | 'rsw'
+  | 'wellness'
+  | 'home-support'
+
+export const CAPABILITIES: Record<Role, Capability[]> = {
+  admin: ['config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
+  supervisor: ['site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
+  'front-desk': ['money', 'tenancy', 'checks', 'wellness'],
+  'care-staff': ['care', 'checks', 'wellness'],
+  // The three care roles carry the same authority and differ in the duties
+  // they are asked to complete on shift — see `DUTIES` below.
+  rsw: ['care', 'checks', 'wellness'],
+  wellness: ['care', 'checks', 'wellness'],
+  'home-support': ['care', 'checks', 'wellness'],
+}
+
+export const ROLE_LABEL: Record<Role, string> = {
+  admin: 'Administrator',
+  supervisor: 'Building Supervisor',
+  'front-desk': 'Front Desk',
+  'care-staff': 'Care Staff',
+  rsw: 'Resident Support Worker',
+  wellness: 'Wellness Worker',
+  'home-support': 'Home Support Worker',
+}
+
+/** The roles whose shift the Care Console is built around. */
+export const CARE_ROLES: Role[] = ['rsw', 'wellness', 'home-support']
+
+export function isCareRole(role: Role): boolean {
+  return CARE_ROLES.includes(role)
+}
+
+/* ------------------------------------------------------------------------
+   Shifts
+
+   A day is three segments. This is policy, not data: the building is staffed
+   around the clock and every wellness check belongs to exactly one segment.
+   The client passes its clock in (a query must not read the wall clock), and
+   passes its UTC offset so "which shift is live" is answered in the building's
+   local time rather than UTC.
+   ------------------------------------------------------------------------ */
+
+export type ShiftKey = 'overnight' | 'morning' | 'evening'
+
+export const SHIFTS: {
+  key: ShiftKey
+  label: string
+  hours: string
+  icon: string
+  from: number
+  to: number
+}[] = [
+  { key: 'overnight', label: 'Overnight Staff', hours: '12 – 8 am', icon: 'moon', from: 0, to: 8 },
+  { key: 'morning', label: 'Morning Staff', hours: '8 am – 4 pm', icon: 'sunrise', from: 8, to: 16 },
+  { key: 'evening', label: 'Evening Staff', hours: '4 pm – 12 am', icon: 'sunset', from: 16, to: 24 },
+]
+
+/**
+ * The calendar day a moment falls on, in the building's local time.
+ * `tzOffsetMinutes` is the browser's `getTimezoneOffset()` — minutes *behind*
+ * UTC, so local = utc − offset.
+ */
+export function localDate(now: number, tzOffsetMinutes: number): string {
+  return new Date(now - tzOffsetMinutes * 60_000).toISOString().slice(0, 10)
+}
+
+/** Minutes from midnight, in the building's local time. */
+export function localMinutes(now: number, tzOffsetMinutes: number): number {
+  const local = new Date(now - tzOffsetMinutes * 60_000)
+  return local.getUTCHours() * 60 + local.getUTCMinutes()
+}
+
+/**
+ * The shift a moment belongs to. `tzOffsetMinutes` is the browser's
+ * `getTimezoneOffset()` — minutes *behind* UTC, so local = utc − offset.
+ */
+export function shiftAt(
+  now: number,
+  tzOffsetMinutes: number,
+): { key: ShiftKey; shiftDate: string; hour: number } {
+  const local = new Date(now - tzOffsetMinutes * 60_000)
+  const hour = local.getUTCHours()
+  const shift = SHIFTS.find((s) => hour >= s.from && hour < s.to) ?? SHIFTS[2]!
+  return { key: shift.key, shiftDate: local.toISOString().slice(0, 10), hour }
+}
+
+/* ------------------------------------------------------------------------
+   Duties
+
+   The standing tasks each care role is asked to complete on a shift. Kept in
+   code rather than a table because they are the job description, not
+   operational data: they change when the role changes, which is a deploy.
+   ------------------------------------------------------------------------ */
+
+export type Duty = { key: string; label: string; meta: string; icon: string }
+
+export const DUTIES: Record<string, { title: string; icon: string; accent: string; items: Duty[] }> = {
+  rsw: {
+    title: 'Building Rounds & Tasks',
+    icon: 'route',
+    accent: 'blue',
+    items: [
+      { key: 'rounds', label: 'Rounds — building & grounds', meta: 'Every 30 minutes', icon: 'route' },
+      { key: 'harm-reduction', label: 'Harm-reduction room restock', meta: 'Restock and clean', icon: 'shield-check' },
+      { key: 'lobby', label: 'Lobby & amenity areas', meta: 'Sweep / mop', icon: 'home' },
+      { key: 'bathrooms', label: 'Staff & shared bathrooms', meta: 'Due this shift', icon: 'door' },
+      { key: 'medication', label: 'Medication support', meta: 'Per policy', icon: 'pill' },
+      { key: 'requests', label: 'Resident assistance requests', meta: 'Laundry, deliveries, escorts', icon: 'notes' },
+    ],
+  },
+  'home-support': {
+    title: 'Personal Care & Medication',
+    icon: 'pill',
+    accent: 'teal',
+    items: [
+      { key: 'bathing', label: 'Bathing and hygiene assists', meta: 'Activities of daily living', icon: 'user-check' },
+      { key: 'transfers', label: 'Toileting & transfers', meta: 'Mobility support', icon: 'user-check' },
+      { key: 'wound-care', label: 'Wound and dressing care', meta: 'Per care plan', icon: 'heart' },
+      { key: 'med-pass', label: 'Medication pass', meta: 'Transfer of function', icon: 'pill' },
+      { key: 'meals', label: 'Meal and feeding support', meta: 'Monitor intake', icon: 'notes' },
+      { key: 'observations', label: 'Observation log', meta: 'Document changes', icon: 'file-text' },
+    ],
+  },
+  wellness: {
+    title: 'Care Plans & Referrals',
+    icon: 'heart',
+    accent: 'violet',
+    items: [
+      { key: 'housing-retention', label: 'Housing-retention reviews', meta: 'Care plan work', icon: 'heart' },
+      { key: 'referrals', label: 'Referrals — income, health, treatment', meta: 'Open referrals', icon: 'arrow-right' },
+      { key: 'appointments', label: 'Appointment follow-up', meta: 'Encourage and escort', icon: 'calendar' },
+      { key: 'care-plans', label: 'Care-plan updates', meta: 'Due this shift', icon: 'notes' },
+      { key: 'crisis', label: 'Crisis check-ins', meta: 'De-escalation and support', icon: 'shield-check' },
+      { key: 'mentorship', label: 'New-staff mentorship', meta: 'Shadowing', icon: 'user-check' },
+    ],
+  },
+}
+
+/** Duties for a role, falling back to the RSW list for non-care roles. */
+export function dutiesFor(role: Role) {
+  return DUTIES[role] ?? DUTIES.rsw!
+}
+
+/** The role a user's *real* account holds. */
+export function realRole(user: Doc<'users'>): Role {
+  return (user.role ?? 'front-desk') as Role
+}
+
+/**
+ * The role the server acts on. An administrator testing the app as another
+ * role gets that role's permissions for real — otherwise the test proves
+ * nothing about what a front-desk worker can actually do.
+ */
+export function effectiveRole(user: Doc<'users'>): Role {
+  return (user.simulatedRole ?? user.role ?? 'front-desk') as Role
+}
+
+export function can(user: Doc<'users'>, capability: Capability): boolean {
+  return CAPABILITIES[effectiveRole(user)].includes(capability)
+}
+
+/** Staff guard that also insists on a capability. Returns the caller. */
+export async function requireCapability(
+  ctx: QueryCtx | MutationCtx,
+  capability: Capability,
+): Promise<Doc<'users'>> {
+  const user = await requireStaff(ctx)
+  if (!can(user, capability)) {
+    const role = ROLE_LABEL[effectiveRole(user)]
+    throw new Error(
+      user.simulatedRole
+        ? `Not permitted while testing as ${role}. Switch back to your own role to do this.`
+        : `${role} accounts cannot do this. Ask a supervisor or administrator.`,
+    )
+  }
+  return user
+}
+
+/**
+ * Administrator-only. Buildings, rooms and staff accounts are configuration:
+ * a front-desk mistake there is not recoverable from the UI, so the server
+ * refuses the write rather than trusting a hidden menu item.
+ */
+export async function requireAdmin(
+  ctx: QueryCtx | MutationCtx,
+): Promise<Doc<'users'>> {
+  return await requireCapability(ctx, 'config')
+}
+
+/**
+ * Resolve each resident's photo to a URL, once, for a list that shows faces.
+ *
+ * Casual and relief staff do not know residents by name. A face in the row is
+ * the difference between reading a note about "Room 102" and knowing who
+ * answered the door, so the lists that drive a shift carry photos.
+ */
+export async function photoUrlsFor(
+  ctx: QueryCtx | MutationCtx,
+  tenants: Doc<'tenants'>[],
+): Promise<Map<string, string | null>> {
+  const entries = await Promise.all(
+    tenants.map(
+      async (tenant) =>
+        [
+          tenant._id as string,
+          tenant.photoId ? await ctx.storage.getUrl(tenant.photoId) : null,
+        ] as const,
+    ),
+  )
+  return new Map(entries)
+}
+
+/** Balance owed, in cents. Charges minus payments and credits. */
+export function balanceFromLedger(entries: Doc<'rentLedger'>[]): number {
+  return entries.reduce(
+    (sum, e) => sum + (e.kind === 'charge' ? e.amountCents : -e.amountCents),
+    0,
+  )
+}
+
+/* ------------------------------------------------------------------------
+   Rollups
+
+   `tenants.balanceCents` / `.depositHeldCents` mirror the two append-only
+   tables. Every write goes through the helpers below so the mirror is updated
+   inside the same transaction as the row it mirrors — the only arrangement in
+   which the two cannot disagree. `recomputeTenantRollups` rebuilds them from
+   the ledger and is the repair path if they ever do.
+   ------------------------------------------------------------------------ */
+
+/** Signed effect of a ledger row on what a tenant owes. */
+export function ledgerDelta(kind: 'charge' | 'payment' | 'credit', amountCents: number): number {
+  return kind === 'charge' ? amountCents : -amountCents
+}
+
+/** Insert a rent ledger row and move the tenant's cached balance with it. */
+export async function applyLedgerEntry(
+  ctx: MutationCtx,
+  tenant: Doc<'tenants'>,
+  entry: {
+    kind: 'charge' | 'payment' | 'credit'
+    amountCents: number
+    postedAt: number
+    periodLabel?: string
+    method?: 'cheque' | 'cash' | 'eft' | 'money-order'
+    reference?: string
+    note?: string
+    postedBy?: Id<'users'>
+  },
+): Promise<{ entryId: Id<'rentLedger'>; balanceCents: number }> {
+  const entryId = await ctx.db.insert('rentLedger', {
+    tenantId: tenant._id,
+    buildingId: tenant.buildingId,
+    ...entry,
+  })
+
+  const balanceCents = (tenant.balanceCents ?? 0) + ledgerDelta(entry.kind, entry.amountCents)
+
+  await ctx.db.patch(tenant._id, {
+    balanceCents,
+    ...(entry.kind === 'payment'
+      ? { lastPaymentAt: entry.postedAt, lastPaymentCents: entry.amountCents }
+      : {}),
+  })
+
+  return { entryId, balanceCents }
+}
+
+/** Insert a deposit movement and move the tenant's cached held figure with it. */
+export async function applyDepositEntry(
+  ctx: MutationCtx,
+  tenant: Doc<'tenants'>,
+  entry: { amountCents: number; postedAt: number; reason: string; postedBy?: Id<'users'> },
+): Promise<{ entryId: Id<'depositEntries'>; depositHeldCents: number }> {
+  const entryId = await ctx.db.insert('depositEntries', {
+    tenantId: tenant._id,
+    buildingId: tenant.buildingId,
+    ...entry,
+  })
+
+  const depositHeldCents = (tenant.depositHeldCents ?? 0) + entry.amountCents
+  await ctx.db.patch(tenant._id, { depositHeldCents })
+
+  return { entryId, depositHeldCents }
+}
+
+/** Rebuild one tenant's rollups from the tables they mirror. */
+export async function recomputeTenantRollups(
+  ctx: MutationCtx,
+  tenantId: Id<'tenants'>,
+): Promise<void> {
+  const [ledger, deposits] = await Promise.all([
+    ctx.db
+      .query('rentLedger')
+      .withIndex('by_tenant', (q) => q.eq('tenantId', tenantId))
+      .collect(),
+    ctx.db
+      .query('depositEntries')
+      .withIndex('by_tenant', (q) => q.eq('tenantId', tenantId))
+      .collect(),
+  ])
+
+  const lastPayment = ledger
+    .filter((e) => e.kind === 'payment')
+    .sort((a, b) => b.postedAt - a.postedAt)[0]
+
+  await ctx.db.patch(tenantId, {
+    balanceCents: balanceFromLedger(ledger),
+    depositHeldCents: depositHeld(deposits),
+    lastPaymentAt: lastPayment?.postedAt,
+    lastPaymentCents: lastPayment?.amountCents,
+  })
+}
+
+export function depositHeld(entries: Doc<'depositEntries'>[]): number {
+  return entries.reduce((sum, e) => sum + e.amountCents, 0)
+}
+
+/** Group ledger/deposit rows by tenant so a screen costs one table scan, not N. */
+export function groupBy<T, K extends string>(
+  rows: T[],
+  key: (row: T) => K,
+): Record<K, T[]> {
+  const out = {} as Record<K, T[]>
+  for (const row of rows) {
+    const k = key(row)
+    ;(out[k] ??= []).push(row)
+  }
+  return out
+}
+
+/**
+ * The single place that decides what color a room is on the home screen.
+ * Order matters and is deliberate: a resident in crisis outranks money owed,
+ * money owed outranks paperwork.
+ */
+export function deriveRoomStatus(args: {
+  tenant: Doc<'tenants'> | undefined
+  balanceCents: number
+  depositHeldCents: number
+  hasOpenCriticalNeed: boolean
+  lastCheckedAt: number | undefined
+  now: number
+}): { status: RoomStatus; note: string } {
+  const { tenant, balanceCents, depositHeldCents, hasOpenCriticalNeed, lastCheckedAt, now } = args
+
+  if (!tenant) return { status: 'vacant', note: 'Vacant' }
+  if (hasOpenCriticalNeed) {
+    return { status: 'critical', note: `${tenant.name} — critical needs on file` }
+  }
+  if (balanceCents > 0) {
+    return { status: 'rent', note: `${tenant.name} — rent due ${money(balanceCents)}` }
+  }
+  if (depositHeldCents < tenant.depositRequiredCents) {
+    return { status: 'deposit', note: `${tenant.name} — deposit short` }
+  }
+  if (lastCheckedAt === undefined || now - lastCheckedAt > CHECK_INTERVAL_MS) {
+    return { status: 'check', note: 'Room check due' }
+  }
+  return { status: 'ok', note: `${tenant.name} — all clear` }
+}
+
+/** Server-side money formatting for notes that get stored or read as prose. */
+export function money(cents: number): string {
+  return (
+    '$' +
+    (cents / 100).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  )
+}
+
+/** Resolve the building a screen should show: explicit arg, else the first one. */
+export async function resolveBuilding(
+  ctx: QueryCtx,
+  buildingId: Id<'buildings'> | undefined,
+): Promise<Doc<'buildings'> | null> {
+  if (buildingId) return await ctx.db.get(buildingId)
+  const first = await ctx.db.query('buildings').first()
+  return first
+}

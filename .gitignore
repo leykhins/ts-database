@@ -1,0 +1,31 @@
+# Nuxt
+.nuxt
+.output
+.data
+.nitro
+.cache
+dist
+
+# Node
+node_modules
+*.log
+
+# Env — `npx convex dev` writes the real deployment URL and keys into
+# .env.local. Never commit it; .env.example documents what it should contain.
+.env
+.env.local
+.env.*.local
+
+# Convex
+.convex
+
+# Agent tooling — vendored skill docs are regenerable, not source.
+# .claude/launch.json is kept: it is the project's dev-server config.
+.claude/*
+!.claude/launch.json
+.agents/
+skills-lock.json
+
+# OS / editor
+.DS_Store
+Thumbs.db

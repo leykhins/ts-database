@@ -1,0 +1,23 @@
+/* ============================================================
+   TS Database — stylesheet entry
+   Tailwind + tw-animate (shadcn's runtime) sit underneath the
+   TS Database token system, which stays the source of truth for
+   every colour, size and radius the product uses.
+   ============================================================ */
+
+/* Webfonts first: a remote @import has to precede every rule, and Tailwind's
+   own import emits rules. Contents match tokens/fonts.css. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* The design system, vendored verbatim from the Claude Design project. */
+@import './tokens/colors.css';
+@import './tokens/typography.css';
+@import './tokens/spacing.css';
+@import './tokens/elevation.css';
+@import './tokens/base.css';
+
+/* Bridge: expresses the tokens above in the names Tailwind and shadcn expect. */
+@import './theme.css';

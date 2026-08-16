@@ -1,0 +1,47 @@
+/* ============================================================
+   TS Database — Elevation, Shadows & Motion
+   Soft, layered shadows on a cool slate base. Calm motion —
+   short, eased, never bouncy. This is a tool people use all
+   day for vulnerable residents; it should feel steady.
+   ============================================================ */
+:root {
+  /* Shadows — structural, not decorative. Surfaces are separated by a
+     hairline border; shadow is reserved for things that genuinely float
+     above the page (menus, dialogs, toasts). */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: 0 1px 2px rgba(16, 20, 28, 0.04), 0 4px 12px rgba(16, 20, 28, 0.06);
+  --shadow-lg: 0 2px 4px rgba(16, 20, 28, 0.04), 0 12px 28px rgba(16, 20, 28, 0.09);
+  --shadow-xl: 0 4px 8px rgba(16, 20, 28, 0.05), 0 24px 56px rgba(16, 20, 28, 0.12);
+
+  /* Primary action: a tight edge, not a colored glow */
+  --shadow-brand: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+
+  /* Inset / sunken */
+  --shadow-inset: inset 0 1px 2px rgba(22, 28, 39, 0.08);
+
+  /* Focus ring (paired with --ring color in colors.css) */
+  --focus-ring: 0 0 0 2px var(--surface-card), 0 0 0 4px var(--ring);
+
+  /* ---- Motion ---- */
+  --ease-out:   cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out:cubic-bezier(0.45, 0, 0.2, 1);
+  --ease-spring:cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --dur-fast:   120ms;
+  --dur-base:   180ms;
+  --dur-slow:   260ms;
+
+  --transition-base: all var(--dur-base) var(--ease-out);
+  --transition-colors: background-color var(--dur-fast) var(--ease-out),
+                       border-color var(--dur-fast) var(--ease-out),
+                       color var(--dur-fast) var(--ease-out);
+
+  /* z-index scale */
+  --z-base: 1;
+  --z-sticky: 100;
+  --z-dropdown: 400;
+  --z-overlay: 800;
+  --z-modal: 900;
+  --z-toast: 1000;
+}
