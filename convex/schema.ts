@@ -21,17 +21,19 @@ export const supportLevel = v.union(
 )
 
 /**
- * Staff roles. `admin` is the only one that may change configuration.
+ * Staff roles, most authority first. `admin` is the only one that may touch the
+ * portfolio or the staff directory; `building-manager` runs the fabric of the
+ * buildings it is assigned to. See `model.ts` → `CAPABILITIES` for what each
+ * one may actually write.
  *
- * The three care roles are the front-desk jobs the Care Console is built for.
- * They are separate roles rather than one "care staff" bucket because each
- * carries a different duty list on shift — rounds, personal care, care plans.
+ * The three care roles are the shift jobs the Care Console is built for. They
+ * are separate roles rather than one "care staff" bucket because each carries a
+ * different duty list on shift — rounds, personal care, care plans.
  */
 export const staffRole = v.union(
   v.literal('admin'),
+  v.literal('building-manager'),
   v.literal('supervisor'),
-  v.literal('front-desk'),
-  v.literal('care-staff'),
   v.literal('rsw'), // Resident Support Worker
   v.literal('wellness'), // Wellness Worker (mental-health support)
   v.literal('home-support'), // Home Support Worker (personal care)
@@ -178,6 +180,17 @@ export default defineSchema({
   ...authTables,
   users: defineTable({
     name: v.optional(v.string()),
+    /**
+     * What staff sign in with, and the identifier the account row is keyed on.
+     *
+     * `by_username` is a lookup index, not a constraint — Convex has no unique
+     * indexes. It exists so a duplicate can be refused with a sentence a person
+     * understands. The actual guarantee lives in `authAccounts`, whose
+     * `providerAndAccountId` index refuses a second account with the same id
+     * even if this pre-check races.
+     */
+    username: v.optional(v.string()),
+    /** Contact information only. Never an authentication input. */
     email: v.optional(v.string()),
     emailVerificationTime: v.optional(v.number()),
     phone: v.optional(v.string()),
@@ -194,6 +207,9 @@ export default defineSchema({
     simulatedRole: v.optional(staffRole),
     homeBuildingId: v.optional(v.id('buildings')),
   })
+    .index('by_username', ['username'])
+    // `email` and `phone` are kept because Convex Auth's own
+    // `defaultCreateOrUpdateUser` looks them up by these exact index names.
     .index('email', ['email'])
     .index('phone', ['phone']),
 

@@ -32,7 +32,7 @@ import {
  */
 const route = useRoute()
 const { signOut } = useConvexAuth()
-const { selected, select } = useSelectedBuilding()
+const { selected, select, reconcile } = useSelectedBuilding()
 const header = usePageHeader()
 
 const { me, isFrontline } = useMe()
@@ -40,6 +40,11 @@ const { data: buildings } = useConvexQuery(api.buildings.list)
 const { data: overview } = useConvexQuery(api.dashboard.overview, () => ({
   ...(selected.value ? { buildingId: selected.value } : {}),
 }))
+
+// Drop a remembered building that is no longer on offer — deleted, or no
+// longer assigned to this person. Without this the stored id outlives the
+// thing it names and every screen asks for a building the server won't return.
+watchEffect(() => reconcile(buildings.value))
 
 // Nothing chosen yet (first sign-in, cleared storage): follow the server's
 // default so the switcher label matches what the screens are showing.

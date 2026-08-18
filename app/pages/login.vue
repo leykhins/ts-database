@@ -13,7 +13,7 @@ const route = useRoute()
 
 const mode = ref<'signIn' | 'signUp'>('signIn')
 const name = ref('')
-const email = ref('')
+const username = ref('')
 const password = ref('')
 const error = ref('')
 const pending = ref(false)
@@ -33,8 +33,8 @@ watchEffect(() => {
 
 async function submit() {
   error.value = ''
-  if (!email.value.trim() || !password.value) {
-    error.value = 'Enter your email and password.'
+  if (!username.value.trim() || !password.value) {
+    error.value = 'Enter your username and password.'
     return
   }
   if (mode.value === 'signUp' && password.value.length < 8) {
@@ -45,9 +45,9 @@ async function submit() {
   pending.value = true
   try {
     await signIn({
-      // Lower-cased at both ends: the account id is the email verbatim, so
-      // "Bob@" and "bob@" would otherwise be two different accounts.
-      email: email.value.trim().toLowerCase(),
+      // Trimmed and lower-cased at both ends: the account id is the normalized
+      // username, so "Asha " and "asha" must reach the server as one account.
+      username: username.value.trim().toLowerCase(),
       password: password.value,
       flow: mode.value,
       ...(mode.value === 'signUp' ? { name: name.value.trim() } : {}),
@@ -55,14 +55,16 @@ async function submit() {
     await navigateTo((route.query.next as string) || '/')
   } catch (e) {
     // Convex Auth deliberately returns the same failure for "no such account"
-    // and "wrong password" — don't leak which staff emails exist.
+    // and "wrong password" — don't leak which usernames exist.
     const message = (e as Error).message ?? ''
     error.value
       = message.includes('InvalidAccountId') || message.includes('InvalidSecret')
-        ? 'Email or password is incorrect.'
-        : mode.value === 'signUp' && message.includes('already')
-          ? 'An account with that email already exists.'
-          : 'Could not sign in. Check the details and try again.'
+        ? 'Username or password is incorrect.'
+        : message.includes('TooManyFailedAttempts')
+          ? 'Too many failed attempts. Wait a while before trying again.'
+          : mode.value === 'signUp' && message.includes('already')
+            ? 'An account with that username already exists.'
+            : 'Could not sign in. Check the details and try again.'
   } finally {
     pending.value = false
   }
@@ -100,17 +102,24 @@ async function submit() {
             <Input :id="id" v-model="name" autocomplete="name" placeholder="Asha Okafor" />
           </DsField>
 
-          <DsField v-slot="{ id }" label="Work email" required>
+          <DsField
+            v-slot="{ id }"
+            label="Username"
+            required
+            :hint="mode === 'signUp' ? 'Lowercase letters, digits, dots and hyphens.' : undefined"
+          >
             <div class="relative">
               <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground">
-                <DsIcon name="mail" :size="16" />
+                <DsIcon name="shield-user" :size="16" />
               </span>
               <Input
                 :id="id"
-                v-model="email"
-                type="email"
+                v-model="username"
+                type="text"
                 autocomplete="username"
-                placeholder="name@housing.org"
+                autocapitalize="none"
+                spellcheck="false"
+                placeholder="asha.okafor"
                 class="pl-9"
                 required
               />

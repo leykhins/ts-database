@@ -25,5 +25,23 @@ export function useSelectedBuilding() {
     }
   }
 
-  return { selected, select }
+  /**
+   * Drop a remembered building that is no longer on offer.
+   *
+   * A stored id outlives the thing it points at — a building can be deleted, or
+   * a worker's assignment revoked, while the id sits in `localStorage`. Left
+   * alone it wedges the whole app: every screen asks for a building the server
+   * will not return, and the shell shows "Loading…" forever. Treat it as stale
+   * rather than as an error, and fall back to the first building available.
+   *
+   * Call with `null`/`undefined` while the list is still loading — that is not
+   * evidence of anything and must not clear a good selection.
+   */
+  function reconcile(available: { _id: Id<'buildings'> }[] | null | undefined) {
+    if (!available) return
+    if (selected.value && available.some((b) => b._id === selected.value)) return
+    select(available[0]?._id ?? null)
+  }
+
+  return { selected, select, reconcile }
 }

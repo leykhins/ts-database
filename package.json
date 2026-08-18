@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TS Database \u2014 supportive & low-income housing operations dashboard (Nuxt 4 + Convex)",
+  "description": "TS Database — supportive & low-income housing operations dashboard (Nuxt 4 + Convex)",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -28,6 +28,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.44.0",
+    "lucia": "^3.2.2",
     "nuxt": "^4.5.2",
     "reka-ui": "^2.10.3",
     "tailwind-merge": "^3.6.0",

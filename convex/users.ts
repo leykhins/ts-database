@@ -18,17 +18,19 @@ import type { DataModel, Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
 import {
   CAPABILITIES,
+  DEFAULT_ROLE,
+  MIN_PASSWORD,
   ROLE_LABEL,
   effectiveRole,
   realRole,
   requireAdmin,
+  normalizeUsername,
   requireStaff,
+  validateUsername,
 } from './model'
 import type { Role } from './model'
 import { staffRole } from './schema'
 
-/** Password floor, applied wherever a credential is set. */
-const MIN_PASSWORD = 8
 
 /**
  * The signed-in staff member. Returns null rather than throwing when nobody is
@@ -50,7 +52,8 @@ export const me = query({
 
     return {
       _id: user._id,
-      name: user.name ?? user.email ?? 'Staff',
+      name: user.name ?? user.username ?? 'Staff',
+      username: user.username ?? null,
       email: user.email,
       role,
       roleLabel: ROLE_LABEL[role],
@@ -71,7 +74,7 @@ export const me = query({
  * The simulated role is stored on the user and honoured by every permission
  * check on the server, so this is a real test rather than a UI preview. Only
  * the caller's *real* role is allowed to set or clear it — otherwise an
- * administrator testing as front desk could not get back.
+ * administrator testing as a support worker could not get back.
  */
 export const setSimulatedRole = mutation({
   args: { role: v.union(staffRole, v.null()) },
@@ -115,10 +118,11 @@ export const list = query({
 
     return users
       .map((user) => {
-        const role: Role = user.role ?? 'front-desk'
+        const role: Role = user.role ?? DEFAULT_ROLE
         return {
           _id: user._id,
-          name: user.name ?? user.email ?? 'Staff',
+          name: user.name ?? user.username ?? 'Staff',
+          username: user.username ?? '',
           email: user.email ?? '',
           role,
           roleLabel: ROLE_LABEL[role],
@@ -147,12 +151,12 @@ export const assertAdmin = internalQuery({
   },
 })
 
-export const findByEmail = internalQuery({
-  args: { email: v.string() },
-  handler: async (ctx, { email }) => {
+export const findByUsername = internalQuery({
+  args: { username: v.string() },
+  handler: async (ctx, { username }) => {
     return await ctx.db
       .query('users')
-      .withIndex('email', (q) => q.eq('email', email))
+      .withIndex('by_username', (q) => q.eq('username', username))
       .first()
   },
 })
@@ -166,7 +170,8 @@ export const findByEmail = internalQuery({
 export const createStaff = action({
   args: {
     name: v.string(),
-    email: v.string(),
+    username: v.string(),
+    email: v.optional(v.string()),
     temporaryPassword: v.string(),
     role: staffRole,
     homeBuildingId: v.optional(v.id('buildings')),
@@ -175,27 +180,27 @@ export const createStaff = action({
     await ctx.runQuery(internal.users.assertAdmin, {})
 
     const name = args.name.trim()
-    // Sign-in matches on the account id, which is the email verbatim, so both
-    // ends lower-case it — otherwise "Bob@" and "bob@" are different accounts.
-    const email = args.email.trim().toLowerCase()
+    // Sign-in matches on the account id, which is the normalized username, so
+    // this must be the same normalization the provider applies.
+    const username = normalizeUsername(args.username)
+    const email = args.email?.trim().toLowerCase() || undefined
 
     if (!name) throw new Error('Enter the employee’s name.')
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new Error('Enter a valid work email address.')
-    }
+    validateUsername(username)
     if (args.temporaryPassword.length < MIN_PASSWORD) {
       throw new Error(`The temporary password must be at least ${MIN_PASSWORD} characters.`)
     }
 
-    const existing = await ctx.runQuery(internal.users.findByEmail, { email })
-    if (existing) throw new Error('A staff account already uses that email.')
+    const existing = await ctx.runQuery(internal.users.findByUsername, { username })
+    if (existing) throw new Error(`The username “${username}” is already taken.`)
 
     const { user } = await createAccount<DataModel>(ctx, {
       provider: 'password',
-      account: { id: email, secret: args.temporaryPassword },
+      account: { id: username, secret: args.temporaryPassword },
       profile: {
         name,
-        email,
+        username,
+        ...(email ? { email } : {}),
         role: args.role,
         ...(args.homeBuildingId ? { homeBuildingId: args.homeBuildingId } : {}),
       },
@@ -212,7 +217,7 @@ export const myAccount = internalQuery({
     const userId = await getAuthUserId(ctx)
     if (userId === null) return null
     const user = await ctx.db.get(userId)
-    return user ? { _id: user._id, email: user.email ?? null } : null
+    return user ? { _id: user._id, username: user.username ?? null } : null
   },
 })
 
@@ -228,7 +233,7 @@ export const changeMyPassword = action({
   args: { currentPassword: v.string(), newPassword: v.string() },
   handler: async (ctx, args): Promise<null> => {
     const me = await ctx.runQuery(internal.users.myAccount, {})
-    if (!me?.email) throw new Error('Not signed in.')
+    if (!me?.username) throw new Error('Not signed in.')
 
     if (args.newPassword.length < MIN_PASSWORD) {
       throw new Error(`Choose a password of at least ${MIN_PASSWORD} characters.`)
@@ -240,7 +245,7 @@ export const changeMyPassword = action({
     try {
       await retrieveAccount<DataModel>(ctx, {
         provider: 'password',
-        account: { id: me.email, secret: args.currentPassword },
+        account: { id: me.username, secret: args.currentPassword },
       })
     } catch {
       throw new Error('Your current password is not correct.')
@@ -248,7 +253,7 @@ export const changeMyPassword = action({
 
     await modifyAccountCredentials<DataModel>(ctx, {
       provider: 'password',
-      account: { id: me.email, secret: args.newPassword },
+      account: { id: me.username, secret: args.newPassword },
     })
     return null
   },
@@ -259,7 +264,7 @@ export const changeMyPassword = action({
  * a deployment nobody can sign in to:
  *
  *     npx convex run users:createTestAccount \
- *       '{"name":"QA Tester","email":"qa@housing.org","password":"…","role":"admin"}'
+ *       '{"name":"QA Tester","username":"qa","password":"…","role":"admin"}'
  *
  * Internal, so it is not reachable from the browser, and it takes the password
  * as an argument rather than defaulting to one — a known-password account that
@@ -269,27 +274,28 @@ export const changeMyPassword = action({
 export const createTestAccount = internalAction({
   args: {
     name: v.string(),
-    email: v.string(),
+    username: v.string(),
     password: v.string(),
     role: staffRole,
   },
-  handler: async (ctx, args): Promise<{ userId: Id<'users'>; email: string }> => {
-    const email = args.email.trim().toLowerCase()
+  handler: async (ctx, args): Promise<{ userId: Id<'users'>; username: string }> => {
+    const username = normalizeUsername(args.username)
+    validateUsername(username)
 
     if (args.password.length < MIN_PASSWORD) {
       throw new Error(`The password must be at least ${MIN_PASSWORD} characters.`)
     }
 
-    const existing = await ctx.runQuery(internal.users.findByEmail, { email })
-    if (existing) throw new Error(`An account already uses ${email}.`)
+    const existing = await ctx.runQuery(internal.users.findByUsername, { username })
+    if (existing) throw new Error(`An account already uses the username “${username}”.`)
 
     const { user } = await createAccount<DataModel>(ctx, {
       provider: 'password',
-      account: { id: email, secret: args.password },
-      profile: { name: args.name.trim(), email, role: args.role },
+      account: { id: username, secret: args.password },
+      profile: { name: args.name.trim(), username, role: args.role },
     })
 
-    return { userId: user._id, email }
+    return { userId: user._id, username }
   },
 })
 
@@ -353,11 +359,11 @@ export const resetPassword = action({
     }
 
     const user = await ctx.runQuery(internal.users.getById, { userId: args.userId })
-    if (!user?.email) throw new Error('That staff account has no email to reset.')
+    if (!user?.username) throw new Error('That staff account has no username to reset.')
 
     await modifyAccountCredentials<DataModel>(ctx, {
       provider: 'password',
-      account: { id: user.email, secret: args.temporaryPassword },
+      account: { id: user.username, secret: args.temporaryPassword },
     })
     await invalidateSessions<DataModel>(ctx, { userId: args.userId })
     return null
@@ -391,23 +397,24 @@ export const remove = action({
 /**
  * Recovery hatch, CLI only:
  *
- *     npx convex run users:promoteToAdmin '{"email":"name@housing.org"}'
+ *     npx convex run users:promoteToAdmin '{"username":"asha"}'
  *
  * Internal, so it is not reachable from the browser. This is the way back in
  * if a deployment ends up with no administrator, and the way an account made
  * before roles were enforced gets promoted.
  */
 export const promoteToAdmin = internalMutation({
-  args: { email: v.string() },
-  handler: async (ctx, { email }) => {
+  args: { username: v.string() },
+  handler: async (ctx, { username }) => {
+    const name = normalizeUsername(username)
     const user = await ctx.db
       .query('users')
-      .withIndex('email', (q) => q.eq('email', email.trim().toLowerCase()))
+      .withIndex('by_username', (q) => q.eq('username', name))
       .first()
-    if (!user) throw new Error(`No staff account with the email ${email}.`)
+    if (!user) throw new Error(`No staff account with the username “${name}”.`)
 
     await ctx.db.patch(user._id, { role: 'admin' })
-    return { userId: user._id, name: user.name ?? user.email }
+    return { userId: user._id, name: user.name ?? user.username }
   },
 })
 

@@ -45,7 +45,7 @@ export const list = query({
     ] as NonNullable<(typeof recent)[number]['completedBy']>[]
     const staff = await Promise.all(staffIds.map((id) => ctx.db.get(id)))
     const staffName = new Map(
-      staff.filter(Boolean).map((u) => [u!._id as string, u!.name ?? u!.email ?? 'Staff']),
+      staff.filter(Boolean).map((u) => [u!._id as string, u!.name ?? u!.username ?? 'Staff']),
     )
 
     const lastByRoom = new Map<string, (typeof recent)[number]>()

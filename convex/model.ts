@@ -29,6 +29,46 @@ export async function requireStaff(
 }
 
 /* ------------------------------------------------------------------------
+   Usernames
+
+   Staff sign in with a username, not an email address. Building workers do not
+   reliably have work email, and this app sends no mail — an address was only
+   ever serving as an account key it is badly suited to.
+
+   These two functions are authoritative on the server: the normalized username
+   *is* the account identifier that `createAccount` and `retrieveAccount` match
+   on, so if the client and the server ever disagreed about what "Asha " means,
+   the account would simply not be found.
+   ------------------------------------------------------------------------ */
+
+/** Password floor, applied everywhere a credential is set. */
+export const MIN_PASSWORD = 8
+
+export function normalizeUsername(raw: string | undefined): string {
+  return (raw ?? '').trim().toLowerCase()
+}
+
+const USERNAME = /^[a-z0-9][a-z0-9._-]{2,31}$/
+
+/** Throws naming the rule that was broken. Call on an already-normalized name. */
+export function validateUsername(username: string): void {
+  // Checked before the pattern, so the likeliest mistake gets the most useful
+  // message rather than a generic one about permitted characters.
+  if (username.includes('@')) {
+    throw new Error(
+      'A username is not an email address — use the short name, for example “asha.okafor”.',
+    )
+  }
+  if (username.length < 3) throw new Error('A username needs at least 3 characters.')
+  if (username.length > 32) throw new Error('A username can be at most 32 characters.')
+  if (!USERNAME.test(username)) {
+    throw new Error(
+      'Use lowercase letters, digits, dots, hyphens and underscores, starting with a letter or digit.',
+    )
+  }
+}
+
+/* ------------------------------------------------------------------------
    Roles and capabilities
 
    Reading is open to all staff: someone covering a shift needs the whole
@@ -38,36 +78,46 @@ export async function requireStaff(
    model — change a line here and the server, the nav and the disabled buttons
    all follow.
 
-     config       buildings, rooms, staff accounts
-     site-config  how one building runs: meal sittings, laundry hours, limits
-     money    rent payments, monthly charges, deposit movements
-     care     support levels, critical needs
-     tenancy  intake, room moves, exits, editing a resident's record
-     checks   room and building check sign-off
+     config           the portfolio and the people: create and remove
+                      buildings, create and remove staff accounts, set roles
+     building-config  one building's fabric: its rooms, taking a room out of
+                      service, the building's own name and address
+     site-config      how one building runs: meal sittings, laundry hours, limits
+     money            rent payments, monthly charges, deposit movements
+     care             support levels, critical needs
+     tenancy          intake, room moves, exits, editing a resident's record
+     checks           room and building check sign-off, work orders
+     wellness         wellness checks, shift reports, services, visitors
+
+   `config` and `building-config` are deliberately separate. A building manager
+   runs their own sites' rooms without being handed the staff directory or the
+   ability to delete a building, and that distinction is what makes the role
+   expressible here rather than as an `if (role === …)` somewhere downstream.
    ------------------------------------------------------------------------ */
 
 export type Capability =
   | 'config'
+  | 'building-config'
   | 'site-config'
   | 'money'
   | 'care'
   | 'tenancy'
   | 'checks'
   | 'wellness'
+
 export type Role =
   | 'admin'
+  | 'building-manager'
   | 'supervisor'
-  | 'front-desk'
-  | 'care-staff'
   | 'rsw'
   | 'wellness'
   | 'home-support'
 
+/** Strictly nested: admin ⊃ building-manager ⊃ supervisor ⊃ the care roles. */
 export const CAPABILITIES: Record<Role, Capability[]> = {
-  admin: ['config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
+  admin: ['config', 'building-config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
+  'building-manager': ['building-config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
   supervisor: ['site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
-  'front-desk': ['money', 'tenancy', 'checks', 'wellness'],
-  'care-staff': ['care', 'checks', 'wellness'],
   // The three care roles carry the same authority and differ in the duties
   // they are asked to complete on shift — see `DUTIES` below.
   rsw: ['care', 'checks', 'wellness'],
@@ -77,20 +127,21 @@ export const CAPABILITIES: Record<Role, Capability[]> = {
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Administrator',
+  'building-manager': 'Building Manager',
   supervisor: 'Building Supervisor',
-  'front-desk': 'Front Desk',
-  'care-staff': 'Care Staff',
   rsw: 'Resident Support Worker',
   wellness: 'Wellness Worker',
   'home-support': 'Home Support Worker',
 }
 
-/** The roles whose shift the Care Console is built around. */
-export const CARE_ROLES: Role[] = ['rsw', 'wellness', 'home-support']
-
-export function isCareRole(role: Role): boolean {
-  return CARE_ROLES.includes(role)
-}
+/**
+ * The role an account falls back to when it has none on record.
+ *
+ * The least-privileged one, deliberately. This used to be a mid-privilege role
+ * that could take rent, so a half-created account was quietly trusted with
+ * money.
+ */
+export const DEFAULT_ROLE: Role = 'rsw'
 
 /* ------------------------------------------------------------------------
    Shifts
@@ -205,16 +256,16 @@ export function dutiesFor(role: Role) {
 
 /** The role a user's *real* account holds. */
 export function realRole(user: Doc<'users'>): Role {
-  return (user.role ?? 'front-desk') as Role
+  return (user.role ?? DEFAULT_ROLE) as Role
 }
 
 /**
  * The role the server acts on. An administrator testing the app as another
  * role gets that role's permissions for real — otherwise the test proves
- * nothing about what a front-desk worker can actually do.
+ * nothing about what a support worker can actually do.
  */
 export function effectiveRole(user: Doc<'users'>): Role {
-  return (user.simulatedRole ?? user.role ?? 'front-desk') as Role
+  return (user.simulatedRole ?? user.role ?? DEFAULT_ROLE) as Role
 }
 
 export function can(user: Doc<'users'>, capability: Capability): boolean {
@@ -239,9 +290,9 @@ export async function requireCapability(
 }
 
 /**
- * Administrator-only. Buildings, rooms and staff accounts are configuration:
- * a front-desk mistake there is not recoverable from the UI, so the server
- * refuses the write rather than trusting a hidden menu item.
+ * Administrator-only. The portfolio and the staff directory are configuration:
+ * a mistake there is not recoverable from the UI, so the server refuses the
+ * write rather than trusting a hidden menu item.
  */
 export async function requireAdmin(
   ctx: QueryCtx | MutationCtx,

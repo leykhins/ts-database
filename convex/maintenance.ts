@@ -158,7 +158,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { workOrderId: v.id('workOrders') },
   handler: async (ctx, { workOrderId }) => {
-    await requireCapability(ctx, 'config')
+    await requireCapability(ctx, 'building-config')
     await ctx.db.delete(workOrderId)
     return null
   },

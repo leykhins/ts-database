@@ -126,7 +126,8 @@ async function remove(row: StaffRow) {
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
-          <TableHead class="w-[220px]">Email</TableHead>
+          <TableHead class="w-[160px]">Username</TableHead>
+          <TableHead class="w-[200px]">Email</TableHead>
           <TableHead class="w-[190px]">Role</TableHead>
           <TableHead class="w-[190px]">Home building</TableHead>
           <TableHead class="w-[120px]">Added</TableHead>
@@ -144,6 +145,7 @@ async function remove(row: StaffRow) {
             </div>
           </TableCell>
 
+          <TableCell class="mono text-[var(--text-strong)]">{{ row.username || '—' }}</TableCell>
           <TableCell class="text-muted-foreground">{{ row.email || '—' }}</TableCell>
 
           <TableCell>

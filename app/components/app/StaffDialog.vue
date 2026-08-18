@@ -42,12 +42,30 @@ type Role = RoleValue
 const NO_BUILDING = 'none'
 
 const name = ref('')
+const username = ref('')
 const email = ref('')
 const role = ref<Role>('rsw')
 const homeBuilding = ref<string>(NO_BUILDING)
 const password = ref('')
 const error = ref('')
-const created = ref<{ name: string; email: string; password: string } | null>(null)
+const created = ref<{ name: string; username: string; password: string } | null>(null)
+
+/**
+ * Suggest `first.last` from the employee's name, so a whole team ends up with
+ * usernames in one shape rather than each supervisor inventing a convention.
+ * Only fills a field the administrator has not typed into.
+ */
+const usernameTouched = ref(false)
+watch(name, (value) => {
+  if (usernameTouched.value) return
+  const parts = value.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  username.value = parts
+    .join('.')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // strip accents; the key is ASCII
+    .replace(/[^a-z0-9._-]/g, '')
+    .slice(0, 32)
+})
 
 /** A readable temporary password: staff type this once, from a sticky note. */
 function suggestPassword(): string {
@@ -63,6 +81,8 @@ watch(
   (open) => {
     if (!open) return
     name.value = ''
+    username.value = ''
+    usernameTouched.value = false
     email.value = ''
     role.value = 'rsw'
     homeBuilding.value = NO_BUILDING
@@ -78,7 +98,8 @@ async function save() {
   try {
     await createStaff({
       name: name.value.trim(),
-      email: email.value.trim().toLowerCase(),
+      username: username.value.trim().toLowerCase(),
+      ...(email.value.trim() ? { email: email.value.trim().toLowerCase() } : {}),
       temporaryPassword: password.value,
       role: role.value,
       ...(homeBuilding.value !== NO_BUILDING
@@ -87,7 +108,7 @@ async function save() {
     })
     created.value = {
       name: name.value.trim(),
-      email: email.value.trim().toLowerCase(),
+      username: username.value.trim().toLowerCase(),
       password: password.value,
     }
     toast.success(`${name.value.trim()} can now sign in`)
@@ -99,7 +120,7 @@ async function save() {
 async function copyCredentials() {
   if (!created.value) return
   await navigator.clipboard.writeText(
-    `TS Database sign-in\nEmail: ${created.value.email}\nTemporary password: ${created.value.password}`,
+    `TS Database sign-in\nUsername: ${created.value.username}\nTemporary password: ${created.value.password}`,
   )
   toast.success('Sign-in details copied')
 }
@@ -134,9 +155,9 @@ async function copyCredentials() {
       <div v-if="created" class="flex flex-col gap-4 p-[22px]">
         <div class="flex flex-col gap-2 rounded-lg bg-[var(--surface-sunken)] p-4">
           <div class="flex items-baseline justify-between gap-3">
-            <span class="text-xs text-muted-foreground">Email</span>
+            <span class="text-xs text-muted-foreground">Username</span>
             <span class="mono text-sm font-semibold text-[var(--text-strong)]">
-              {{ created.email }}
+              {{ created.username }}
             </span>
           </div>
           <div class="flex items-baseline justify-between gap-3">
@@ -160,7 +181,32 @@ async function copyCredentials() {
           <Input :id="id" v-model="name" placeholder="Asha Okafor" />
         </DsField>
 
-        <DsField v-slot="{ id }" label="Work email" required>
+        <DsField
+          v-slot="{ id }"
+          label="Username"
+          required
+          hint="What they sign in with. Lowercase letters, digits, dots and hyphens; 3–32 characters."
+        >
+          <div class="relative">
+            <span
+              class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground"
+            >
+              <DsIcon name="shield-user" :size="16" />
+            </span>
+            <Input
+              :id="id"
+              v-model="username"
+              type="text"
+              autocapitalize="none"
+              spellcheck="false"
+              placeholder="asha.okafor"
+              class="pl-9"
+              @input="usernameTouched = true"
+            />
+          </div>
+        </DsField>
+
+        <DsField v-slot="{ id }" label="Contact email" hint="Optional. Not used to sign in.">
           <div class="relative">
             <span
               class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground"

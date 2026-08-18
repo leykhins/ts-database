@@ -147,7 +147,7 @@ export const current = query({
     return {
       building: { _id: building._id, name: building.name },
       context: {
-        author: staff.name ?? staff.email ?? 'Staff',
+        author: staff.name ?? staff.username ?? 'Staff',
         role,
         shiftKey: key,
         shiftDate,

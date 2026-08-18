@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import type { MutationCtx } from './_generated/server'
 import type { Id } from './_generated/dataModel'
-import { requireAdmin, requireStaff } from './model'
+import { requireCapability, requireStaff } from './model'
 
 /**
  * Rooms are building configuration, so everything that changes them is
@@ -93,7 +93,7 @@ export const create = mutation({
     monthlyRentCents: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx)
+    await requireCapability(ctx, 'building-config')
 
     const building = await ctx.db.get(args.buildingId)
     if (!building) throw new Error('That building no longer exists.')
@@ -140,7 +140,7 @@ export const createRange = mutation({
     monthlyRentCents: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx)
+    await requireCapability(ctx, 'building-config')
 
     const building = await ctx.db.get(args.buildingId)
     if (!building) throw new Error('That building no longer exists.')
@@ -198,7 +198,7 @@ export const update = mutation({
     outOfService: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx)
+    await requireCapability(ctx, 'building-config')
 
     const room = await ctx.db.get(args.roomId)
     if (!room) throw new Error('That room no longer exists.')
@@ -265,7 +265,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { roomId: v.id('rooms') },
   handler: async (ctx, { roomId }) => {
-    await requireAdmin(ctx)
+    await requireCapability(ctx, 'building-config')
 
     const room = await ctx.db.get(roomId)
     if (!room) throw new Error('That room no longer exists.')

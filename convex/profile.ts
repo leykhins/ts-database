@@ -276,7 +276,7 @@ export const sheet = query({
     }
 
     return {
-      generatedBy: staff.name ?? staff.email ?? 'Staff',
+      generatedBy: staff.name ?? staff.username ?? 'Staff',
       tenant: {
         name: tenant.name,
         preferredName: tenant.preferredName ?? null,

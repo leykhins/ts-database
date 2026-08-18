@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { internalMutation, mutation } from './_generated/server'
 import type { Id } from './_generated/dataModel'
 import type { MutationCtx } from './_generated/server'
-import { SHIFTS, recomputeTenantRollups, shiftAt } from './model'
+import { SHIFTS, recomputeTenantRollups, requireAdmin, shiftAt } from './model'
 
 /**
  * Development seed. Every resident, building and dollar figure below is
@@ -72,6 +72,11 @@ const cents = (dollars: number) => Math.round(dollars * 100)
 export const run = mutation({
   args: { reset: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
+    // Administrators only. `{"reset": true}` deletes every operational row, so
+    // an unauthenticated caller who knew the deployment URL could erase the
+    // site — and that URL ships inside the client bundle.
+    await requireAdmin(ctx)
+
     const existing = await ctx.db.query('buildings').first()
     if (existing && !args.reset) {
       return {
@@ -94,27 +99,77 @@ export const runInternal = internalMutation({
   },
 })
 
+/**
+ * Every operational table, children before parents.
+ *
+ * This list must stay exhaustive. A table left out is not an empty-looking
+ * omission — it is rows pointing at buildings and residents that no longer
+ * exist, which then surface as blank names on the next seeded run.
+ */
+const OPERATIONAL_TABLES = [
+  'shiftLogParticipants',
+  'shiftLogEntries',
+  'shiftReports',
+  'wellnessChecks',
+  'supportLevelChanges',
+  'rentLedger',
+  'depositEntries',
+  'roomChecks',
+  'criticalNeeds',
+  'workOrders',
+  'petSightings',
+  'pets',
+  'wheeledMovements',
+  'supplyIssues',
+  'laundryBookings',
+  'mealServices',
+  'overnightAuthorizations',
+  'visits',
+  'visitors',
+  'tenantContacts',
+  'siteSettings',
+  'tenants',
+  'rooms',
+  'buildings',
+] as const
+
+/** Convex Auth's own tables. Cleared only by `wipeAll`. */
+const AUTH_TABLES = [
+  'authRateLimits',
+  'authVerificationCodes',
+  'authVerifiers',
+  'authRefreshTokens',
+  'authSessions',
+  'authAccounts',
+  'users',
+] as const
+
 async function wipe(ctx: MutationCtx) {
-  const tables = [
-    'shiftLogParticipants',
-    'shiftLogEntries',
-    'shiftReports',
-    'wellnessChecks',
-    'supportLevelChanges',
-    'rentLedger',
-    'depositEntries',
-    'roomChecks',
-    'criticalNeeds',
-    'workOrders',
-    'tenants',
-    'rooms',
-    'buildings',
-  ] as const
-  for (const table of tables) {
+  for (const table of OPERATIONAL_TABLES) {
     const rows = await ctx.db.query(table).collect()
     for (const row of rows) await ctx.db.delete(row._id)
   }
 }
+
+/**
+ * Wipe everything, staff accounts included, returning the deployment to the
+ * state of a fresh `convex dev`.
+ *
+ * Internal and CLI-only on purpose: this is the reset procedure in the README,
+ * not something the running app can ever reach. After it, the next account
+ * created bootstraps as the administrator again — see `convex/auth.ts`.
+ */
+export const wipeAll = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    await wipe(ctx)
+    for (const table of AUTH_TABLES) {
+      const rows = await ctx.db.query(table).collect()
+      for (const row of rows) await ctx.db.delete(row._id)
+    }
+    return { wiped: OPERATIONAL_TABLES.length + AUTH_TABLES.length }
+  },
+})
 
 async function seed(ctx: MutationCtx) {
   const now = Date.now()

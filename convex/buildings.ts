@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import type { MutationCtx } from './_generated/server'
 import type { Id } from './_generated/dataModel'
-import { requireAdmin, requireStaff } from './model'
+import { requireAdmin, requireCapability, requireStaff } from './model'
 
 export const list = query({
   args: {},
@@ -46,7 +46,7 @@ export const get = query({
 export const listForAdmin = query({
   args: {},
   handler: async (ctx) => {
-    await requireAdmin(ctx)
+    await requireCapability(ctx, 'building-config')
     const buildings = await ctx.db.query('buildings').collect()
 
     return await Promise.all(
@@ -127,7 +127,10 @@ export const update = mutation({
     units: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx)
+    // Editing a building's own details is building fabric, not portfolio
+    // configuration — a manager may rename the site they run. Creating and
+    // removing buildings below stays with the administrator.
+    await requireCapability(ctx, 'building-config')
 
     const building = await ctx.db.get(args.buildingId)
     if (!building) throw new Error('That building no longer exists.')

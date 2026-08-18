@@ -2,6 +2,7 @@ import { api } from '../../convex/_generated/api'
 
 export type Capability =
   | 'config'
+  | 'building-config'
   | 'site-config'
   | 'money'
   | 'care'
@@ -9,21 +10,34 @@ export type Capability =
   | 'checks'
   | 'wellness'
 
+/**
+ * The roles, mirroring `convex/model.ts`. `short` is the badge-length form, for
+ * places too narrow for "Resident Support Worker" — it lives here so the label
+ * set stays in one file rather than forking per screen.
+ */
 export const ROLES = [
-  { value: 'admin', label: 'Administrator' },
-  { value: 'supervisor', label: 'Building Supervisor' },
-  { value: 'front-desk', label: 'Front Desk' },
-  { value: 'rsw', label: 'Resident Support Worker' },
-  { value: 'wellness', label: 'Wellness Worker' },
-  { value: 'home-support', label: 'Home Support Worker' },
-  { value: 'care-staff', label: 'Care Staff' },
+  { value: 'admin', label: 'Administrator', short: 'Admin' },
+  { value: 'building-manager', label: 'Building Manager', short: 'Manager' },
+  { value: 'supervisor', label: 'Building Supervisor', short: 'Supervisor' },
+  { value: 'rsw', label: 'Resident Support Worker', short: 'RSW' },
+  { value: 'wellness', label: 'Wellness Worker', short: 'Wellness' },
+  { value: 'home-support', label: 'Home Support Worker', short: 'Home Support' },
 ] as const
 
 export type RoleValue = (typeof ROLES)[number]['value']
 
+export const ROLE_LABEL = Object.fromEntries(
+  ROLES.map((r) => [r.value, r.label]),
+) as Record<RoleValue, string>
+
+export const ROLE_SHORT = Object.fromEntries(
+  ROLES.map((r) => [r.value, r.short]),
+) as Record<RoleValue, string>
+
 /** What each role may do, in the words the UI uses to explain a disabled button. */
 export const CAPABILITY_LABEL: Record<Capability, string> = {
-  config: 'Buildings, rooms and staff accounts',
+  config: 'Buildings and staff accounts',
+  'building-config': 'Rooms and this building’s details',
   'site-config': 'Meal sittings, laundry hours and supply limits',
   money: 'Rent payments, charges and deposits',
   care: 'Support levels and critical needs',
@@ -41,13 +55,7 @@ export const CAPABILITY_LABEL: Record<Capability, string> = {
  * client believed.
  */
 /** The roles whose home screen is the Care Console rather than the ops dashboard. */
-export const FRONTLINE_ROLES: RoleValue[] = [
-  'rsw',
-  'wellness',
-  'home-support',
-  'care-staff',
-  'front-desk',
-]
+export const FRONTLINE_ROLES: RoleValue[] = ['rsw', 'wellness', 'home-support']
 
 export function useMe() {
   const { data: me, isLoading } = useConvexQuery(api.users.me)

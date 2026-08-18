@@ -13,7 +13,11 @@ import schema from './schema'
 
 const modules = import.meta.glob('./**/*.ts')
 
-type Role = 'admin' | 'supervisor' | 'front-desk' | 'care-staff'
+/**
+ * `rsw` stands in for the three care roles, which hold identical authority and
+ * differ only in their shift duties.
+ */
+type Role = 'admin' | 'building-manager' | 'supervisor' | 'rsw'
 
 /** A building with one room and one resident, plus a user per role. */
 async function setup() {
@@ -46,7 +50,7 @@ async function setup() {
     })
 
     const users = {} as Record<Role, Id<'users'>>
-    for (const role of ['admin', 'supervisor', 'front-desk', 'care-staff'] as Role[]) {
+    for (const role of ['admin', 'building-manager', 'supervisor', 'rsw'] as Role[]) {
       users[role] = await ctx.db.insert('users', { name: role, email: `${role}@x.org`, role })
     }
 
@@ -60,17 +64,17 @@ async function setup() {
 }
 
 describe('capabilities', () => {
-  test('front desk may take rent; care staff may not', async () => {
+  test('a supervisor may take rent; a support worker may not', async () => {
     const { as, users, tenantId } = await setup()
 
-    await as(users['front-desk']).mutation(api.rents.receivePayment, {
+    await as(users.supervisor).mutation(api.rents.receivePayment, {
       tenantId,
       amountCents: 10_000,
       method: 'cash',
     })
 
     await expect(
-      as(users['care-staff']).mutation(api.rents.receivePayment, {
+      as(users.rsw).mutation(api.rents.receivePayment, {
         tenantId,
         amountCents: 10_000,
         method: 'cash',
@@ -78,21 +82,79 @@ describe('capabilities', () => {
     ).rejects.toThrow(/cannot do this/)
   })
 
-  test('care staff may change a support level; front desk may not', async () => {
-    const { as, users, tenantId } = await setup()
+  test('a supervisor may intake a resident; a support worker may not', async () => {
+    const { as, users, buildingId } = await setup()
 
-    await as(users['care-staff']).mutation(api.support.setLevel, {
-      tenantId,
-      supportLevel: 'high',
-      reason: 'Discharged from hospital',
+    const intake = {
+      buildingId,
+      name: 'Maria Santos',
+      intakeDate: '2026-01-05',
+      status: 'current' as const,
+      supportLevel: 'high' as const,
+      monthlyRentCents: 49_500,
+      depositRequiredCents: 49_500,
+    }
+
+    await as(users.supervisor).mutation(api.tenants.create, intake)
+
+    await expect(
+      as(users.rsw).mutation(api.tenants.create, { ...intake, name: 'Nope' }),
+    ).rejects.toThrow(/cannot do this/)
+  })
+
+  /**
+   * The crux of the Building Manager role: it runs the fabric of a building
+   * without being handed the portfolio or the staff directory.
+   */
+  test('a building manager may add a room; a supervisor may not', async () => {
+    const { as, users, buildingId } = await setup()
+
+    await as(users['building-manager']).mutation(api.rooms.create, {
+      buildingId,
+      number: '102',
+      floor: 'Floor 1',
+      monthlyRentCents: 54_000,
     })
 
     await expect(
-      as(users['front-desk']).mutation(api.support.setLevel, {
-        tenantId,
-        supportLevel: 'critical',
-        reason: 'Trying it on',
+      as(users.supervisor).mutation(api.rooms.create, {
+        buildingId,
+        number: '103',
+        floor: 'Floor 1',
+        monthlyRentCents: 54_000,
       }),
+    ).rejects.toThrow(/cannot do this/)
+  })
+
+  test('a building manager may edit the building; a supervisor may not', async () => {
+    const { as, users, buildingId } = await setup()
+
+    await as(users['building-manager']).mutation(api.buildings.update, {
+      buildingId,
+      name: 'Dodson Rooms',
+      address: '25 East Hastings Street',
+      units: 48,
+    })
+
+    await expect(
+      as(users.supervisor).mutation(api.buildings.update, {
+        buildingId,
+        name: 'Renamed',
+        units: 48,
+      }),
+    ).rejects.toThrow(/cannot do this/)
+  })
+
+  test('a building manager may not create a building or set a role', async () => {
+    const { as, users } = await setup()
+    const manager = as(users['building-manager'])
+
+    await expect(
+      manager.mutation(api.buildings.create, { name: 'Nope', units: 1 }),
+    ).rejects.toThrow(/cannot do this/)
+
+    await expect(
+      manager.mutation(api.users.updateRole, { userId: users.rsw, role: 'admin' }),
     ).rejects.toThrow(/cannot do this/)
   })
 
@@ -101,7 +163,7 @@ describe('capabilities', () => {
 
     await as(users.admin).mutation(api.buildings.create, { name: 'Carrall Annex', units: 36 })
 
-    for (const role of ['supervisor', 'front-desk', 'care-staff'] as Role[]) {
+    for (const role of ['building-manager', 'supervisor', 'rsw'] as Role[]) {
       await expect(
         as(users[role]).mutation(api.buildings.create, { name: 'Nope', units: 1 }),
       ).rejects.toThrow(/cannot do this/)
@@ -141,28 +203,29 @@ describe('capabilities', () => {
 })
 
 describe('role simulation', () => {
-  test('an administrator testing as front desk is really held to it', async () => {
-    const { as, users, tenantId } = await setup()
+  test('an administrator testing as a supervisor is really held to it', async () => {
+    const { as, users, tenantId, buildingId } = await setup()
     const admin = as(users.admin)
 
-    await admin.mutation(api.users.setSimulatedRole, { role: 'front-desk' })
+    await admin.mutation(api.users.setSimulatedRole, { role: 'supervisor' })
 
     const me = await admin.query(api.users.me)
-    expect(me).toMatchObject({ role: 'front-desk', realRole: 'admin', simulating: true })
+    expect(me).toMatchObject({ role: 'supervisor', realRole: 'admin', simulating: true })
 
-    // Front desk cannot touch care records or configuration…
+    // A supervisor touches neither the building's fabric nor the portfolio…
     await expect(
-      admin.mutation(api.support.setLevel, {
-        tenantId,
-        supportLevel: 'high',
-        reason: 'Should be refused',
+      admin.mutation(api.rooms.create, {
+        buildingId,
+        number: '999',
+        floor: 'Floor 9',
+        monthlyRentCents: 1,
       }),
-    ).rejects.toThrow(/testing as Front Desk/)
+    ).rejects.toThrow(/testing as Building Supervisor/)
     await expect(
       admin.mutation(api.buildings.create, { name: 'Nope', units: 1 }),
-    ).rejects.toThrow(/testing as Front Desk/)
+    ).rejects.toThrow(/testing as Building Supervisor/)
 
-    // …but can do front-desk work.
+    // …but does take rent.
     await admin.mutation(api.rents.receivePayment, {
       tenantId,
       amountCents: 5_000,
@@ -170,11 +233,31 @@ describe('role simulation', () => {
     })
   })
 
+  test('an administrator testing as a building manager cannot manage staff', async () => {
+    const { as, users, buildingId } = await setup()
+    const admin = as(users.admin)
+
+    await admin.mutation(api.users.setSimulatedRole, { role: 'building-manager' })
+
+    // The room is theirs to add…
+    await admin.mutation(api.rooms.create, {
+      buildingId,
+      number: '104',
+      floor: 'Floor 1',
+      monthlyRentCents: 54_000,
+    })
+
+    // …the staff directory is not.
+    await expect(
+      admin.mutation(api.users.updateRole, { userId: users.rsw, role: 'admin' }),
+    ).rejects.toThrow(/testing as Building Manager/)
+  })
+
   test('switching back is always possible, and checks the real role', async () => {
     const { as, users } = await setup()
     const admin = as(users.admin)
 
-    await admin.mutation(api.users.setSimulatedRole, { role: 'care-staff' })
+    await admin.mutation(api.users.setSimulatedRole, { role: 'rsw' })
     await admin.mutation(api.users.setSimulatedRole, { role: null })
 
     expect(await admin.query(api.users.me)).toMatchObject({
@@ -241,7 +324,7 @@ describe('money', () => {
 
   test('a deposit cannot be taken below zero', async () => {
     const { as, users, tenantId } = await setup()
-    const staff = as(users['front-desk'])
+    const staff = as(users.supervisor)
 
     await staff.mutation(api.rents.adjustDeposit, {
       tenantId,
@@ -264,7 +347,7 @@ describe('tenancy', () => {
     const { as, users, buildingId, roomId } = await setup()
 
     await expect(
-      as(users['front-desk']).mutation(api.tenants.create, {
+      as(users.supervisor).mutation(api.tenants.create, {
         buildingId,
         roomId,
         name: 'Maria Santos',

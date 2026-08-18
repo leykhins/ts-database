@@ -17,16 +17,6 @@ usePageHeader(() => ({
   title: 'Shift Reports',
 }))
 
-const ROLE_LABEL: Record<string, string> = {
-  rsw: 'RSW',
-  wellness: 'Wellness',
-  'home-support': 'Home Support',
-  'front-desk': 'Front Desk',
-  'care-staff': 'Care Staff',
-  supervisor: 'Supervisor',
-  admin: 'Administrator',
-}
-
 const CONFIRMATIONS = [
   { key: 'radioCheck', label: 'Radio check' },
   { key: 'handover', label: 'Handover' },
@@ -70,7 +60,7 @@ const CONFIRMATIONS = [
             <div class="ml-auto flex items-center gap-2">
               <DsPersonAvatar :name="report.author" size="sm" />
               <span class="text-sm font-semibold text-[var(--text-body)]">{{ report.author }}</span>
-              <Badge variant="neutral">{{ ROLE_LABEL[report.authorRole] ?? report.authorRole }}</Badge>
+              <Badge variant="neutral">{{ ROLE_SHORT[report.authorRole] ?? report.authorRole }}</Badge>
             </div>
           </div>
 
