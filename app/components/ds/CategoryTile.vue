@@ -1,4 +1,8 @@
 <script setup lang="ts">
+// See RoomGrid.vue: resolving this in the `:is` expression left Vue unable to
+// find it, so the tile rendered as a plain div — a launcher that looked
+// clickable and navigated nowhere.
+import { NuxtLink } from '#components'
 import { Card } from '@/components/ui/card'
 
 /**
@@ -37,7 +41,7 @@ const hue = computed(() => THEMES[props.color] ?? THEMES.green!)
     :interactive="!!to"
   >
     <component
-      :is="to ? resolveComponent('NuxtLink') : 'div'"
+      :is="to ? NuxtLink : 'div'"
       :to="to"
       class="flex items-center gap-3 no-underline hover:no-underline"
     >

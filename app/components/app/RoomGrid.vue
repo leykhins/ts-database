@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// Imported rather than resolved at render time. `resolveComponent('NuxtLink')`
+// inside the `:is` expression ran without a reliable component instance, so
+// Vue could not resolve it and logged a warning on every render — leaving the
+// occupied cells as plain elements that looked clickable and were not.
+import { NuxtLink } from '#components'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 /**
@@ -96,7 +101,7 @@ function legendStyle(status: string) {
       <div class="eyebrow mb-2 block text-[var(--text-subtle)]">{{ floor.label }}</div>
       <div class="grid grid-cols-6 gap-2 xl:grid-cols-10">
         <component
-          :is="cell.tenantId ? resolveComponent('NuxtLink') : 'div'"
+          :is="cell.tenantId ? NuxtLink : 'div'"
           v-for="cell in floor.cells"
           :key="cell.number"
           :to="cell.tenantId ? `/tenants/${cell.tenantId}` : undefined"
