@@ -1,8 +1,8 @@
 # TS Database
 
 Operations dashboard for supportive & low-income housing — the tool building
-supervisors and front-desk staff use to run buildings for seniors and people
-living with mental-health conditions.
+managers, supervisors and support workers use to run buildings for seniors and
+people living with mental-health conditions.
 
 Built with **Nuxt 4**, **Convex**, and **shadcn-vue**, styled by the
 [TS Database design system](https://claude.ai/design) (Claude Design project
@@ -53,11 +53,17 @@ Create the administrator"**. That first account becomes the administrator; the
 sign-up form disappears afterwards, and every later account is created from
 **Admin → Staff** inside the app.
 
-If an account predates this rule, or a deployment ends up with no
-administrator, promote one from the CLI:
+Staff sign in with a **username**, not an email address — building workers do
+not reliably have work email, and this app sends none. A username is lowercase
+letters, digits, dots, hyphens and underscores, 3–32 characters, and it is the
+account identifier: `Asha` and `asha ` are the same account. An optional
+contact email can be recorded against a staff record, but it never signs
+anyone in.
+
+If a deployment ends up with no administrator, promote one from the CLI:
 
 ```bash
-npx convex run users:promoteToAdmin '{"email":"name@housing.org"}'
+npx convex run users:promoteToAdmin '{"username":"asha"}'
 ```
 
 ### Environment
@@ -86,7 +92,7 @@ you) points the frontend at the deployment. See `.env.example`.
 | `buildings.ts` · `rooms.ts` | Portfolio configuration — administrator only |
 | `users.ts` | Staff directory, account creation, roles, role testing |
 | `crons.ts` | Monthly rent posting |
-| `auth.ts` | Convex Auth, email + password |
+| `auth.ts` | Convex Auth, username + password (custom `ConvexCredentials` provider) |
 | `seed.ts` | Fictional development data |
 | `permissions.test.ts` | The rules that are expensive to get wrong |
 
@@ -160,22 +166,34 @@ picture. Writing is not. `model.ts` → `CAPABILITIES` is the entire permission
 model; change a line there and the server, the nav and the disabled buttons all
 follow.
 
-| | config | site-config | money | care | tenancy | checks | wellness |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **Administrator** | ● | ● | ● | ● | ● | ● | ● |
-| **Building Supervisor** | | ● | ● | ● | ● | ● | ● |
-| **Front Desk** | | | ● | | ● | ● | ● |
-| **Resident Support Worker** | | | | ● | | ● | ● |
-| **Wellness Worker** | | | | ● | | ● | ● |
-| **Home Support Worker** | | | | ● | | ● | ● |
+| | config | building-config | site-config | money | care | tenancy | checks | wellness |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| **Administrator** | ● | ● | ● | ● | ● | ● | ● | ● |
+| **Building Manager** | | ● | ● | ● | ● | ● | ● | ● |
+| **Building Supervisor** | | | ● | ● | ● | ● | ● | ● |
+| **Resident Support Worker** | | | | | ● | | ● | ● |
+| **Wellness Worker** | | | | | ● | | ● | ● |
+| **Home Support Worker** | | | | | ● | | ● | ● |
 
-- **config** — buildings, rooms, staff accounts
+- **config** — the portfolio and the people: creating and removing buildings,
+  creating and removing staff accounts, setting roles
+- **building-config** — one building's fabric: its rooms, taking a room out of
+  service, the building's own name and address
 - **site-config** — how one building runs: meal sittings, laundry hours, supply limits
 - **money** — rent payments, monthly charges, deposit movements
 - **care** — support levels, critical needs
 - **tenancy** — intake, room moves, exits, editing a resident's record
 - **checks** — room and building check sign-off, work orders
 - **wellness** — wellness checks and shift reports
+
+`config` and `building-config` are deliberately separate. A Building Manager
+runs the sites they are assigned to — rooms, out-of-service, the building's own
+details — without being handed the staff directory or the ability to delete a
+building. Splitting the capability is what lets that role be expressed in the
+table above rather than as an `if (role === …)` somewhere downstream.
+
+The roles are strictly nested: Administrator ⊃ Building Manager ⊃ Building
+Supervisor ⊃ the three care roles.
 
 The three care roles hold the same authority and differ in the duties they are
 asked to complete on shift (`model.ts` → `DUTIES`): rounds and building tasks
@@ -187,14 +205,47 @@ authorisation is enforced on the server; the route middleware and the disabled
 buttons only avoid showing staff a wall of refusals. Sign-up cannot set a role
 and is refused once any account exists, so an administrator is the only way in.
 
+### Building assignments
+
+A role says what someone may do. `users.assignedBuildingIds` says **where**.
+Staff cover the buildings they are assigned to — often more than one — and see
+nothing outside them. Administrators bypass this and reach every building.
+
+This is not a UI filter. A resident's health record, a rent ledger and a
+visitor ban are things a worker at another site has no business reading, so it
+is settled on the server: `model.ts` carries `assignedBuildings` for switchers
+and pickers, `assertBuildingAccess` for a direct building id, `scoped` for
+anything reached through another record, and `scopedTenant` for the
+per-resident reads. Out-of-scope requests **throw** rather than returning
+nothing — an empty screen reads as "this building has no residents", which is
+the one wrong answer this app cannot afford to give.
+
+Assignments are set in **Admin → Staff**. An empty list is legitimate and means
+"no access yet" — the state a new account starts in, where the switcher says
+*No building assigned* rather than spinning.
+
+`convex/scoping.test.ts` holds the line. Besides the cross-building refusal
+tests, it enumerates every public Convex function and fails when one is in
+neither the tested set nor an explicitly-reasoned exempt list, so adding a
+function without deciding how it is scoped turns the suite red. A companion
+test asserts that enumeration is non-empty — the first version of this guard
+used `Object.entries(api)`, which returns `[]` because `api` is a Proxy, and so
+passed while checking nothing at all.
+
 ### Testing as another role
 
 An administrator can act as any role from the sidebar footer. The chosen role is
 stored on their user document and honoured by **every permission check on the
 server**, so it is a real test and not a preview: a refused write is refused for
-the same reason a front-desk worker's would be. Only the administrator's real
+the same reason a support worker's would be. Only the administrator's real
 role can clear it, so it is always possible to switch back.
 `convex/permissions.test.ts` asserts exactly this.
+
+Building access is simulated too, judged on the effective role — so an
+administrator testing as a supervisor is held to **their own** assignments. If
+the administrator has none, the simulated app is empty. That is deliberate: a
+simulation that kept full reach would misrepresent the single most important
+thing about the role being tested.
 
 ### UI — `app/`
 
@@ -246,6 +297,9 @@ Fully built and wired to Convex:
   reduction supplies, the bike room and the pet roster. Every rule — sitting
   times, laundry hours and slot length, daily supply caps — is per-site
   configuration a manager sets, not a constant
+- **Visitors** — the sign-in book: who is in the building and who they are
+  visiting, visitor photos, bans, and overnight-stay authorisations that show
+  as a badge on the resident's record
 - **Care Console** — the shift home for care staff: three-shift wellness board,
   Wellness Index, a prioritised "do this next" queue, flagged residents, the
   role's duty list, critical watch and recent handovers
@@ -269,13 +323,68 @@ Fully built and wired to Convex:
   page prints without the app chrome
 - **Admin → Buildings** — add buildings, add rooms a floor at a time, take rooms
   out of service
-- **Admin → Staff** — create accounts with a temporary password, set roles and
-  home buildings, reset passwords, remove accounts
+- **Admin → Staff** — create accounts with a username and a temporary password,
+  set roles and building assignments, reset passwords, remove accounts
 
 Rent is charged to every current tenancy on the 1st of the month by
 `convex/crons.ts`. The Rents screen has the same action as a button, for the
 first month of a new building; both refuse to charge a tenancy twice for the
 same period.
+
+---
+
+## Resetting a deployment
+
+Wiping and reseeding, for when the sample data has drifted or a schema change
+cannot be applied over the rows already there.
+
+**The order matters.** Convex validates existing rows against the new schema at
+push time, so if a change removes a value some row still holds — a role
+literal, say — `convex dev` refuses to push until the data is gone. Wipe on the
+*current* code first, then push.
+
+```bash
+grep CONVEX_DEPLOYMENT .env.local
+```
+
+Check that says the deployment you mean to destroy. Then:
+
+```bash
+npx convex run seed:wipeAll
+```
+
+That clears every operational table **and** the auth tables, staff accounts
+included — the deployment goes back to the state of a fresh `convex dev`. It is
+an internal function, reachable only from the CLI, never from the app.
+
+```bash
+npx convex dev --once
+```
+
+Recreate the administrator. The first account on an empty deployment
+bootstraps as the administrator, so this can also be done from the sign-up form
+at `/login`:
+
+```bash
+npx convex run users:createTestAccount '{"name":"Asha Okafor","username":"asha","password":"choose-one","role":"admin"}'
+```
+
+Then reload the fictional buildings, rooms and residents:
+
+```bash
+npx convex run seed:runInternal
+```
+
+Create the administrator **before** seeding: the seed attributes its sample
+shift report to an existing staff member, and silently skips that record if
+there are no users yet.
+
+`JWT_PRIVATE_KEY`, `JWKS` and `SITE_URL` live on the deployment, not in the
+data, so none of this disturbs them. `npx convex env list` if sign-in
+misbehaves afterwards.
+
+The in-app `seed:run` is administrator-only — it wipes every operational table,
+and the deployment URL ships inside the client bundle.
 
 ---
 
@@ -285,7 +394,7 @@ same period.
 npm run dev          # Nuxt dev server
 npm run dev:backend  # convex dev (run alongside)
 npm run seed         # load the fictional sample data
-npm run test         # convex-test + vitest (rules, permissions, money)
+npm run test         # convex-test + vitest (rules, permissions, scoping, money)
 npm run build        # production build
 npm run typecheck    # vue-tsc
 ```
