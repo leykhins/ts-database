@@ -71,6 +71,40 @@ npx convex run users:promoteToAdmin '{"username":"asha"}'
 `NUXT_PUBLIC_CONVEX_URL` (or `CONVEX_URL`, which `npx convex dev` writes for
 you) points the frontend at the deployment. See `.env.example`.
 
+### Branches and deployments
+
+Two branches, each wired to its own environment and its own Convex backend:
+
+| Branch | Vercel | Convex | URL |
+|---|---|---|---|
+| `dev` | Preview | dev `silent-hawk-332` | preview URL, SSO-walled |
+| `main` | Production | production `dashing-whale-683` | `ts-db.leykhins.dev`, public |
+
+**Work on `dev`. Merge to `main` to release.** `npx convex dev` pushes to the
+dev backend, so local work and the preview build share one backend and cannot
+disturb the public URL.
+
+A push to `main` deploys to the URL people have been given, and its build runs
+`npx convex deploy` against the production backend — so a merge is a release,
+not a save. Treat it as one.
+
+The Vercel build command has to stay conditional, because Vercel applies one
+command to every environment and only Production carries a `CONVEX_DEPLOY_KEY`:
+
+```
+if [ "$VERCEL_ENV" = "production" ]; then npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NUXT_PUBLIC_CONVEX_URL; else npm run build; fi
+```
+
+An unconditional `npx convex deploy` fails preview builds instantly.
+
+**A schema change reaches production at merge time, not before.** Convex
+validates existing rows against the new schema as it pushes, so a change that
+removes a value some production row still holds — a role literal, a field —
+will fail the production build and leave the previous deployment serving. The
+fix is the same as anywhere else: clear or migrate the offending rows first
+(see *Resetting a deployment*), then merge. Rehearse it on `dev`, which is
+what `dev` is for.
+
 ---
 
 ## How it is put together
