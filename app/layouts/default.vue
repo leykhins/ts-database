@@ -35,7 +35,7 @@ const { signOut } = useConvexAuth()
 const { selected, select, reconcile } = useSelectedBuilding()
 const header = usePageHeader()
 
-const { me, isFrontline } = useMe()
+const { me, isFrontline, can } = useMe()
 const { data: buildings } = useConvexQuery(api.buildings.list)
 const { data: overview } = useConvexQuery(api.dashboard.overview, () => ({
   ...(selected.value ? { buildingId: selected.value } : {}),
@@ -56,6 +56,19 @@ watchEffect(() => {
 
 const currentBuilding = computed(() => overview.value?.building ?? null)
 
+/**
+ * Someone with no assignments is a real state, not a loading one — a new
+ * account before anyone has said where they work. Saying "Loading…" forever
+ * leaves them watching a spinner for a thing that will never arrive.
+ */
+const hasNoBuildings = computed(() => buildings.value?.length === 0)
+
+const switcherLabel = computed(() => {
+  if (currentBuilding.value) return currentBuilding.value.name
+  if (hasNoBuildings.value) return 'No building assigned'
+  return 'Loading…'
+})
+
 const NAV = computed(() => [
   ...(isFrontline.value
     ? []
@@ -74,12 +87,17 @@ const NAV = computed(() => [
   { to: '/reports', icon: 'clipboard-list', label: 'Reports' },
 ])
 
-// Configuration lives behind the administrator role: buildings, rooms and the
-// staff list are the things a mistake in cannot be undone from a screen.
-const ADMIN_NAV = [
-  { to: '/admin/buildings', icon: 'building-2', label: 'Buildings' },
-  { to: '/admin/staff', icon: 'shield-user', label: 'Staff' },
-]
+// Configuration is split the way the capabilities are. A Building Manager runs
+// the fabric of their own sites, so Buildings is theirs; the staff directory is
+// the administrator's alone.
+const ADMIN_NAV = computed(() => [
+  ...(can('building-config')
+    ? [{ to: '/admin/buildings', icon: 'building-2', label: 'Buildings' }]
+    : []),
+  ...(me.value?.isAdmin
+    ? [{ to: '/admin/staff', icon: 'shield-user', label: 'Staff' }]
+    : []),
+])
 
 function isActive(to: string, exact = false): boolean {
   if (to === '/' || exact) return route.path === to
@@ -150,10 +168,13 @@ function submitSearch(value: string) {
               </span>
               <span class="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
                 <span class="block truncate text-sm font-semibold text-white">
-                  {{ currentBuilding?.name ?? 'Loading…' }}
+                  {{ switcherLabel }}
                 </span>
                 <span v-if="currentBuilding" class="tnum block text-[11px] text-sidebar-foreground">
                   {{ currentBuilding.occupied }}/{{ currentBuilding.units }} occupied
+                </span>
+                <span v-else-if="hasNoBuildings" class="block text-[11px] text-sidebar-foreground">
+                  Ask an administrator for access
                 </span>
               </span>
               <DsIcon
@@ -207,7 +228,7 @@ function submitSearch(value: string) {
           </SidebarMenu>
         </SidebarGroup>
 
-        <SidebarGroup v-if="me?.isAdmin" class="py-1">
+        <SidebarGroup v-if="ADMIN_NAV.length" class="py-1">
           <SidebarGroupLabel class="text-sidebar-foreground">Administration</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem v-for="item in ADMIN_NAV" :key="item.to">

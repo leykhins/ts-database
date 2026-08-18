@@ -63,7 +63,7 @@ export const me = query({
       canAdminister: actual === 'admin',
       simulating: user.simulatedRole !== undefined,
       capabilities: CAPABILITIES[role],
-      homeBuildingId: user.homeBuildingId,
+      assignedBuildingIds: user.assignedBuildingIds ?? [],
     }
   },
 })
@@ -107,7 +107,7 @@ export const needsBootstrap = query({
   },
 })
 
-/** The staff directory, with each person's home building resolved. */
+/** The staff directory, with each person's building assignments resolved. */
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -119,6 +119,7 @@ export const list = query({
     return users
       .map((user) => {
         const role: Role = user.role ?? DEFAULT_ROLE
+        const assigned = user.assignedBuildingIds ?? []
         return {
           _id: user._id,
           name: user.name ?? user.username ?? 'Staff',
@@ -127,10 +128,15 @@ export const list = query({
           role,
           roleLabel: ROLE_LABEL[role],
           simulatedRole: user.simulatedRole ?? null,
-          homeBuildingId: user.homeBuildingId,
-          homeBuilding: user.homeBuildingId
-            ? buildingName.get(user.homeBuildingId) ?? null
-            : null,
+          assignedBuildingIds: assigned,
+          // Names, so the directory can label the assignment without a second
+          // lookup per row. An id that no longer resolves is dropped rather
+          // than rendered as a blank.
+          assignedBuildings: assigned
+            .map((id) => buildingName.get(id))
+            .filter((n): n is string => Boolean(n)),
+          // Administrators are not assigned buildings; they reach all of them.
+          reachesAllBuildings: role === 'admin',
           isSelf: user._id === admin._id,
           createdAt: user._creationTime,
         }
@@ -174,7 +180,7 @@ export const createStaff = action({
     email: v.optional(v.string()),
     temporaryPassword: v.string(),
     role: staffRole,
-    homeBuildingId: v.optional(v.id('buildings')),
+    assignedBuildingIds: v.optional(v.array(v.id('buildings'))),
   },
   handler: async (ctx, args): Promise<{ userId: Id<'users'> }> => {
     await ctx.runQuery(internal.users.assertAdmin, {})
@@ -202,7 +208,9 @@ export const createStaff = action({
         username,
         ...(email ? { email } : {}),
         role: args.role,
-        ...(args.homeBuildingId ? { homeBuildingId: args.homeBuildingId } : {}),
+        ...(args.assignedBuildingIds?.length
+          ? { assignedBuildingIds: [...new Set(args.assignedBuildingIds)] }
+          : {}),
       },
     })
 
@@ -325,10 +333,17 @@ export const updateRole = mutation({
   },
 })
 
-export const setHomeBuilding = mutation({
+/**
+ * Set which buildings a staff member covers.
+ *
+ * Administrator-only, and it is the whole permission story for a worker: the
+ * role says what they may do, this says where. Passing an empty list is
+ * legitimate and means "no access yet" — the state a new account starts in.
+ */
+export const setAssignedBuildings = mutation({
   args: {
     userId: v.id('users'),
-    homeBuildingId: v.union(v.id('buildings'), v.null()),
+    buildingIds: v.array(v.id('buildings')),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx)
@@ -336,14 +351,16 @@ export const setHomeBuilding = mutation({
     const user = await ctx.db.get(args.userId)
     if (!user) throw new Error('That staff account no longer exists.')
 
-    if (args.homeBuildingId) {
-      const building = await ctx.db.get(args.homeBuildingId)
-      if (!building) throw new Error('That building no longer exists.')
+    // De-duplicate and drop anything that no longer exists, so a stale id from
+    // a slow client cannot become a permission nobody can see or revoke.
+    const unique = [...new Set(args.buildingIds)]
+    const resolved = await Promise.all(unique.map((id) => ctx.db.get(id)))
+    const valid = unique.filter((_, i) => resolved[i] !== null)
+    if (valid.length !== unique.length) {
+      throw new Error('One of those buildings no longer exists. Reload and try again.')
     }
 
-    await ctx.db.patch(args.userId, {
-      homeBuildingId: args.homeBuildingId ?? undefined,
-    })
+    await ctx.db.patch(args.userId, { assignedBuildingIds: valid })
     return null
   },
 })

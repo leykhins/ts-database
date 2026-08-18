@@ -1,6 +1,12 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
-import { requireCapability, requireStaff, resolveBuilding } from './model'
+import {
+  assertBuildingAccess,
+  requireCapability,
+  requireStaff,
+  resolveBuilding,
+  scoped,
+} from './model'
 
 /**
  * Maintenance — work orders raised at the front desk.
@@ -19,8 +25,8 @@ export const list = query({
     includeClosed: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const buildingId = building._id
@@ -91,8 +97,9 @@ export const create = mutation({
     priority,
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'checks')
+    const staff = await requireCapability(ctx, 'checks')
 
+    assertBuildingAccess(staff, args.buildingId)
     const building = await ctx.db.get(args.buildingId)
     if (!building) throw new Error('That building no longer exists.')
     if (!args.title.trim()) throw new Error('Say what needs doing.')
@@ -126,10 +133,9 @@ export const update = mutation({
     detail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'checks')
+    const staff = await requireCapability(ctx, 'checks')
 
-    const order = await ctx.db.get(args.workOrderId)
-    if (!order) throw new Error('That work order no longer exists.')
+    const order = scoped(staff, await ctx.db.get(args.workOrderId), 'That work order no longer exists.')
 
     const patch: Record<string, unknown> = {}
 
@@ -158,7 +164,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { workOrderId: v.id('workOrders') },
   handler: async (ctx, { workOrderId }) => {
-    await requireCapability(ctx, 'building-config')
+    const staff = await requireCapability(ctx, 'building-config')
     await ctx.db.delete(workOrderId)
     return null
   },

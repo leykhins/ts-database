@@ -3,12 +3,14 @@ import { mutation, query } from './_generated/server'
 import type { Doc, Id } from './_generated/dataModel'
 import { checkOutcome } from './schema'
 import {
+  scopedTenant,
   SHIFTS,
   dutiesFor,
   effectiveRole,
   requireCapability,
   photoUrlsFor,
   requireStaff,
+  scoped,
   resolveBuilding,
   shiftAt,
 } from './model'
@@ -75,7 +77,7 @@ export const overview = query({
   },
   handler: async (ctx, args) => {
     const staff = await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const buildingId = building._id
@@ -400,8 +402,7 @@ export const logCheck = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'wellness')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
     if (tenant.status !== 'current') {
       throw new Error('That tenancy is not current — there is nobody to check on.')
     }
@@ -426,7 +427,8 @@ export const logCheck = mutation({
 export const historyFor = query({
   args: { tenantId: v.id('tenants') },
   handler: async (ctx, { tenantId }) => {
-    await requireStaff(ctx)
+    const staff = await requireStaff(ctx)
+    if (!(await scopedTenant(ctx, staff, tenantId))) return []
 
     const checks = await ctx.db
       .query('wellnessChecks')
@@ -456,8 +458,7 @@ export const setDuty = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'wellness')
 
-    const report = await ctx.db.get(args.reportId)
-    if (!report) throw new Error('That shift report no longer exists.')
+    const report = scoped(staff, await ctx.db.get(args.reportId), 'That shift report no longer exists.')
     if (report.authorId !== staff._id) throw new Error('That is not your shift report.')
     if (report.status === 'submitted') throw new Error('That report has already been submitted.')
 

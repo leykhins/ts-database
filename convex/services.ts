@@ -7,6 +7,7 @@ import {
   photoUrlsFor,
   requireCapability,
   requireStaff,
+  scoped,
   resolveBuilding,
 } from './model'
 import { laundrySlots, settingsFor } from './settings'
@@ -59,8 +60,8 @@ export const meals = query({
     date: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const settings = await settingsFor(ctx, building._id)
@@ -145,8 +146,8 @@ export const setMealServed = mutation({
 export const laundry = query({
   args: { buildingId: v.optional(v.id('buildings')), date: v.string() },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const settings = await settingsFor(ctx, building._id)
@@ -256,7 +257,7 @@ export const bookLaundry = mutation({
 export const cancelLaundry = mutation({
   args: { bookingId: v.id('laundryBookings') },
   handler: async (ctx, { bookingId }) => {
-    await requireCapability(ctx, 'wellness')
+    const staff = await requireCapability(ctx, 'wellness')
     await ctx.db.delete(bookingId)
     return null
   },
@@ -278,8 +279,8 @@ export const SUPPLY_LABEL: Record<string, string> = {
 export const supplies = query({
   args: { buildingId: v.optional(v.id('buildings')), date: v.string() },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const settings = await settingsFor(ctx, building._id)
@@ -384,8 +385,8 @@ export const issueSupply = mutation({
 export const wheeled = query({
   args: { buildingId: v.optional(v.id('buildings')) },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const residents = await occupants(ctx, building._id)
@@ -457,8 +458,7 @@ export const signOutWheeled = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'wellness')
 
-    const movement = await ctx.db.get(args.movementId)
-    if (!movement) throw new Error('That entry is no longer on file.')
+    const movement = scoped(staff, await ctx.db.get(args.movementId), 'That entry is no longer on file.')
     if (movement.signedOutAt) throw new Error('That machine has already been signed out.')
 
     await ctx.db.patch(args.movementId, { signedOutAt: args.now, signedOutBy: staff._id })
@@ -473,8 +473,8 @@ export const signOutWheeled = mutation({
 export const petRoster = query({
   args: { buildingId: v.optional(v.id('buildings')), now: v.number() },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const residents = await occupants(ctx, building._id)
@@ -535,7 +535,7 @@ export const addPet = mutation({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'wellness')
+    const staff = await requireCapability(ctx, 'wellness')
 
     if (!args.name.trim()) throw new Error('Give the animal a name.')
     if (!args.kind.trim()) throw new Error('Say what kind of animal it is.')
@@ -553,7 +553,7 @@ export const addPet = mutation({
 export const retirePet = mutation({
   args: { petId: v.id('pets'), now: v.number() },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'wellness')
+    const staff = await requireCapability(ctx, 'wellness')
     await ctx.db.patch(args.petId, { retiredAt: args.now })
     return null
   },
@@ -564,8 +564,7 @@ export const logPetSighting = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'wellness')
 
-    const pet = await ctx.db.get(args.petId)
-    if (!pet) throw new Error('That animal is no longer on the roster.')
+    const pet = scoped(staff, await ctx.db.get(args.petId), 'That animal is no longer on the roster.')
 
     return await ctx.db.insert('petSightings', {
       petId: args.petId,

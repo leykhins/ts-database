@@ -16,7 +16,8 @@ import {
 } from '@/components/ui/table'
 
 /** Admin → Buildings → one building's rooms. */
-const { isReady, isAdmin } = useRequireAdmin()
+const { me, isReady, allowed } = useRequireCapability('building-config')
+const isAdmin = computed(() => me.value?.isAdmin === true)
 const route = useRoute()
 const buildingId = computed(() => route.params.id as Id<'buildings'>)
 
@@ -64,7 +65,7 @@ async function remove(roomId: Id<'rooms'>, number: string) {
 </script>
 
 <template>
-  <div v-if="isReady && isAdmin" class="flex flex-col gap-5">
+  <div v-if="isReady && allowed" class="flex flex-col gap-5">
     <DsSectionHeader
       :eyebrow="building?.address ?? 'Administration'"
       :title="building?.name ?? 'Rooms'"

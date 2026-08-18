@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import { supportLevel } from './schema'
-import { requireCapability, requireStaff, resolveBuilding } from './model'
+import { requireCapability, requireStaff, resolveBuilding, scoped, scopedTenant } from './model'
 
 /**
  * Support levels — where each resident sits between independent living and
@@ -17,8 +17,8 @@ const LEVELS = ['independent', 'moderate', 'high', 'critical'] as const
 export const overview = query({
   args: { buildingId: v.optional(v.id('buildings')) },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const buildingId = building._id
@@ -108,7 +108,8 @@ export const overview = query({
 export const historyFor = query({
   args: { tenantId: v.id('tenants') },
   handler: async (ctx, { tenantId }) => {
-    await requireStaff(ctx)
+    const staff = await requireStaff(ctx)
+    if (!(await scopedTenant(ctx, staff, tenantId))) return []
     const changes = await ctx.db
       .query('supportLevelChanges')
       .withIndex('by_tenant', (q) => q.eq('tenantId', tenantId))
@@ -116,8 +117,8 @@ export const historyFor = query({
       .take(30)
 
     const staffIds = [...new Set(changes.map((c) => c.changedBy).filter(Boolean))]
-    const staff = await Promise.all(staffIds.map((id) => ctx.db.get(id!)))
-    const staffName = new Map(staff.filter(Boolean).map((s) => [s!._id as string, s!.name]))
+    const changedByUsers = await Promise.all(staffIds.map((id) => ctx.db.get(id!)))
+    const staffName = new Map(changedByUsers.filter(Boolean).map((s) => [s!._id as string, s!.name]))
 
     return changes.map((c) => ({
       _id: c._id,
@@ -144,8 +145,7 @@ export const setLevel = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'care')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
     if (tenant.supportLevel === args.supportLevel) {
       throw new Error('That is already this resident’s support level.')
     }

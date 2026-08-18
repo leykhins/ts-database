@@ -90,16 +90,29 @@ export default defineNuxtPlugin((nuxtApp) => {
     }
   }
 
-  client.setAuth(
-    async ({ forceRefreshToken }) => {
-      if (forceRefreshToken) return await refresh()
-      return token
-    },
-    (authed) => {
-      isAuthenticated.value = authed
-      isLoading.value = false
-    },
-  )
+  /**
+   * Hand Convex the current token, and re-arm it whenever that token changes.
+   *
+   * `setAuth` registers a fetcher the client calls on *its* schedule — on
+   * connect, and when a token is rejected. Signing in changes `token` but does
+   * not make the client ask again, so without re-arming here the app stays
+   * unauthenticated until a page reload happens to re-run this plugin: you sign
+   * in successfully and land on an empty dashboard.
+   */
+  const applyAuth = () => {
+    client.setAuth(
+      async ({ forceRefreshToken }) => {
+        if (forceRefreshToken) return await refresh()
+        return token
+      },
+      (authed) => {
+        isAuthenticated.value = authed
+        isLoading.value = false
+      },
+    )
+  }
+
+  applyAuth()
 
   // If we booted with no stored JWT there is nothing for Convex to validate,
   // so no `onChange` will fire and we resolve the loading state ourselves.
@@ -122,6 +135,9 @@ export default defineNuxtPlugin((nuxtApp) => {
       throw new Error('Sign-in did not return a session.')
     }
     setTokens(result.tokens)
+    // Re-arm before returning, so the first query the next screen makes is
+    // already authenticated.
+    applyAuth()
     isLoading.value = false
   }
 
@@ -132,6 +148,9 @@ export default defineNuxtPlugin((nuxtApp) => {
       // Already signed out server-side is a fine place to end up.
     }
     setTokens(null)
+    // Drop the credential from the socket too, or open subscriptions keep
+    // running as the person who just signed out.
+    client.client.clearAuth()
     isLoading.value = false
   }
 
@@ -140,6 +159,9 @@ export default defineNuxtPlugin((nuxtApp) => {
     if (event.key !== key(JWT_KEY)) return
     token = event.newValue
     isAuthenticated.value = token !== null
+    // Same reasoning as sign-in: the client has to be told, not just the ref.
+    if (token === null) client.client.clearAuth()
+    else applyAuth()
   })
 
   nuxtApp.hook('app:beforeMount', () => {

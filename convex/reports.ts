@@ -14,8 +14,8 @@ import { CHECK_INTERVAL_MS, requireStaff, resolveBuilding } from './model'
 export const shift = query({
   args: { buildingId: v.optional(v.id('buildings')), now: v.number() },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const buildingId = building._id

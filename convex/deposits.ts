@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
 import { query } from './_generated/server'
-import { requireStaff, resolveBuilding } from './model'
+import { requireStaff, resolveBuilding, scopedTenant } from './model'
 
 /**
  * Security deposits — money held in trust per tenancy.
@@ -14,8 +14,8 @@ import { requireStaff, resolveBuilding } from './model'
 export const overview = query({
   args: { buildingId: v.optional(v.id('buildings')) },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const buildingId = building._id
@@ -95,7 +95,8 @@ export const overview = query({
 export const historyFor = query({
   args: { tenantId: v.id('tenants') },
   handler: async (ctx, { tenantId }) => {
-    await requireStaff(ctx)
+    const staff = await requireStaff(ctx)
+    if (!(await scopedTenant(ctx, staff, tenantId))) return []
     const entries = await ctx.db
       .query('depositEntries')
       .withIndex('by_tenant', (q) => q.eq('tenantId', tenantId))

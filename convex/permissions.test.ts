@@ -51,7 +51,7 @@ async function setup() {
 
     const users = {} as Record<Role, Id<'users'>>
     for (const role of ['admin', 'building-manager', 'supervisor', 'rsw'] as Role[]) {
-      users[role] = await ctx.db.insert('users', { name: role, email: `${role}@x.org`, role })
+      users[role] = await ctx.db.insert('users', { name: role, username: role, role, assignedBuildingIds: [buildingId] })
     }
 
     return { buildingId, roomId, tenantId, users }

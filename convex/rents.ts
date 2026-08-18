@@ -7,6 +7,7 @@ import {
   applyLedgerEntry,
   requireCapability,
   requireStaff,
+  scoped,
   resolveBuilding,
 } from './model'
 
@@ -29,8 +30,8 @@ export function monthLabel(ts: number): string {
 export const roster = query({
   args: { buildingId: v.optional(v.id('buildings')) },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const buildingId = building._id
@@ -132,8 +133,7 @@ export const receivePayment = mutation({
       throw new Error('Payment amount must be a positive number of cents.')
     }
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('Tenant not found.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'Tenant not found.')
 
     const now = Date.now()
     return await applyLedgerEntry(ctx, tenant, {
@@ -231,8 +231,7 @@ export const adjustDeposit = mutation({
       throw new Error('Say what this deposit movement is for.')
     }
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('Tenant not found.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'Tenant not found.')
 
     const held = tenant.depositHeldCents ?? 0
     if (args.amountCents < 0 && held + args.amountCents < 0) {

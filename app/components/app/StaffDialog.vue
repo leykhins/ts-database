@@ -4,6 +4,7 @@ import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -39,13 +40,12 @@ const { run: createStaff, pending } = useConvexAction(api.users.createStaff)
 
 type Role = RoleValue
 
-const NO_BUILDING = 'none'
 
 const name = ref('')
 const username = ref('')
 const email = ref('')
 const role = ref<Role>('rsw')
-const homeBuilding = ref<string>(NO_BUILDING)
+const assigned = ref<Id<'buildings'>[]>([])
 const password = ref('')
 const error = ref('')
 const created = ref<{ name: string; username: string; password: string } | null>(null)
@@ -85,13 +85,19 @@ watch(
     usernameTouched.value = false
     email.value = ''
     role.value = 'rsw'
-    homeBuilding.value = NO_BUILDING
+    assigned.value = []
     password.value = suggestPassword()
     error.value = ''
     created.value = null
   },
   { immediate: true },
 )
+
+function toggleBuilding(id: Id<'buildings'>, checked: boolean) {
+  assigned.value = checked
+    ? [...assigned.value, id]
+    : assigned.value.filter((b) => b !== id)
+}
 
 async function save() {
   error.value = ''
@@ -102,9 +108,7 @@ async function save() {
       ...(email.value.trim() ? { email: email.value.trim().toLowerCase() } : {}),
       temporaryPassword: password.value,
       role: role.value,
-      ...(homeBuilding.value !== NO_BUILDING
-        ? { homeBuildingId: homeBuilding.value as Id<'buildings'> }
-        : {}),
+      ...(assigned.value.length ? { assignedBuildingIds: [...assigned.value] } : {}),
     })
     created.value = {
       name: name.value.trim(),
@@ -237,18 +241,34 @@ async function copyCredentials() {
             </Select>
           </DsField>
 
-          <DsField v-slot="{ id }" label="Home building">
-            <Select v-model="homeBuilding">
-              <SelectTrigger :id="id" class="w-full">
-                <SelectValue placeholder="Any" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem :value="NO_BUILDING">No home building</SelectItem>
-                <SelectItem v-for="b in buildings" :key="b._id" :value="b._id">
-                  {{ b.name }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
+          <!--
+            Multiple buildings, so a checklist rather than a select. Leaving it
+            empty is legitimate and means "no access yet" — the state every new
+            account starts in until someone decides where this person works.
+          -->
+          <DsField
+            label="Buildings"
+            hint="Where this person works. They see nothing outside these."
+          >
+            <div
+              v-if="buildings.length"
+              class="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-md border border-[var(--border-strong)] p-2"
+            >
+              <label
+                v-for="b in buildings"
+                :key="b._id"
+                class="flex cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 hover:bg-[var(--surface-hover)]"
+              >
+                <Checkbox
+                  :model-value="assigned.includes(b._id)"
+                  @update:model-value="(checked) => toggleBuilding(b._id, Boolean(checked))"
+                />
+                <span class="text-base text-[var(--text-strong)]">{{ b.name }}</span>
+              </label>
+            </div>
+            <p v-else class="text-sm text-muted-foreground">
+              No buildings yet — add one first.
+            </p>
           </DsField>
         </div>
 

@@ -14,7 +14,8 @@ import {
 } from '@/components/ui/table'
 
 /** Admin → Buildings. The portfolio, and the way new sites get into the app. */
-const { isReady, isAdmin } = useRequireAdmin()
+const { me, isReady, allowed } = useRequireCapability('building-config')
+const isAdmin = computed(() => me.value?.isAdmin === true)
 usePageHeader({ eyebrow: 'Administration', title: 'Buildings' })
 
 const { data: buildings, isLoading } = useConvexQuery(api.buildings.listForAdmin)
@@ -61,14 +62,14 @@ function openRooms(id: Id<'buildings'>) {
 </script>
 
 <template>
-  <div v-if="isReady && isAdmin" class="flex flex-col gap-5">
+  <div v-if="isReady && allowed" class="flex flex-col gap-5">
     <DsSectionHeader
       eyebrow="Administration"
       title="Buildings"
       description="Every site this organisation operates. Rooms, and the unit counts the dashboards divide by, live inside each one."
     >
       <template #actions>
-        <Button variant="primary" @click="addBuilding">
+        <Button v-if="isAdmin" variant="primary" @click="addBuilding">
           <DsIcon name="plus" :size="17" />
           Add building
         </Button>
@@ -84,7 +85,7 @@ function openRooms(id: Id<'buildings'>) {
       description="Add the first building, then give it rooms. Everything else in TS Database hangs off a building."
     >
       <template #action>
-        <Button variant="primary" @click="addBuilding">
+        <Button v-if="isAdmin" variant="primary" @click="addBuilding">
           <DsIcon name="plus" :size="17" />
           Add building
         </Button>
@@ -143,6 +144,7 @@ function openRooms(id: Id<'buildings'>) {
                 <DsIcon name="pencil" :size="16" />
               </Button>
               <Button
+                v-if="isAdmin"
                 variant="secondary"
                 size="icon-sm"
                 aria-label="Remove building"

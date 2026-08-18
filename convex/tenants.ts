@@ -2,10 +2,13 @@ import { v } from 'convex/values'
 import { internalMutation, mutation, query } from './_generated/server'
 import { supportLevel, tenancyStatus } from './schema'
 import {
+  scopedTenant,
+  assertBuildingAccess,
   photoUrlsFor,
   recomputeTenantRollups,
   requireCapability,
   requireStaff,
+  scoped,
   resolveBuilding,
 } from './model'
 
@@ -17,8 +20,8 @@ export const list = query({
     supportLevel: v.optional(supportLevel),
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return { building: null, tenants: [], counts: { current: 0, prospective: 0, prior: 0 } }
 
     const buildingId = building._id
@@ -86,8 +89,8 @@ export const list = query({
 export const get = query({
   args: { tenantId: v.id('tenants') },
   handler: async (ctx, { tenantId }) => {
-    await requireStaff(ctx)
-    const tenant = await ctx.db.get(tenantId)
+    const staff = await requireStaff(ctx)
+    const tenant = await scopedTenant(ctx, staff, tenantId)
     if (!tenant) return null
 
     const [building, room, ledger, deposits, needs] = await Promise.all([
@@ -170,8 +173,8 @@ export const get = query({
 export const vacancies = query({
   args: { buildingId: v.optional(v.id('buildings')) },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return []
 
     const buildingId = building._id
@@ -222,8 +225,9 @@ export const create = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
 
+    assertBuildingAccess(staff, args.buildingId)
     const building = await ctx.db.get(args.buildingId)
     if (!building) throw new Error('That building no longer exists.')
 
@@ -295,10 +299,9 @@ export const update = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
 
     const patch: Record<string, unknown> = {}
 
@@ -342,10 +345,9 @@ export const transferRoom = mutation({
     roomId: v.union(v.id('rooms'), v.null()),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
 
     const roomId = args.roomId
     if (roomId) {
@@ -385,10 +387,9 @@ export const exit = mutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
     if (tenant.status === 'prior') throw new Error('That tenancy has already ended.')
     if (!/^\d{4}-\d{2}-\d{2}$/.test(args.exitDate)) {
       throw new Error('Exit date must be a calendar date.')
@@ -413,10 +414,9 @@ export const exit = mutation({
 export const setStatus = mutation({
   args: { tenantId: v.id('tenants'), status: tenancyStatus },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
 
     if (args.status === 'current' && tenant.roomId) {
       const occupant = await ctx.db

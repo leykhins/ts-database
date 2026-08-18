@@ -3,12 +3,14 @@ import { mutation, query } from './_generated/server'
 import type { Id } from './_generated/dataModel'
 import { logKind, shiftLog } from './schema'
 import {
+  assertBuildingAccess,
   SHIFTS,
   dutiesFor,
   photoUrlsFor,
   effectiveRole,
   requireCapability,
   requireStaff,
+  scoped,
   resolveBuilding,
   shiftAt,
 } from './model'
@@ -72,7 +74,7 @@ export const current = query({
   },
   handler: async (ctx, args) => {
     const staff = await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const { key, shiftDate } = shiftAt(args.now, args.tzOffsetMinutes)
@@ -214,8 +216,8 @@ export const current = query({
 export const list = query({
   args: { buildingId: v.optional(v.id('buildings')) },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const reports = await ctx.db
@@ -270,10 +272,11 @@ export const list = query({
 export const get = query({
   args: { reportId: v.id('shiftReports') },
   handler: async (ctx, { reportId }) => {
-    await requireStaff(ctx)
+    const staff = await requireStaff(ctx)
 
     const report = await ctx.db.get(reportId)
     if (!report) return null
+    assertBuildingAccess(staff, report.buildingId)
 
     const [author, building, entries] = await Promise.all([
       ctx.db.get(report.authorId),
@@ -386,8 +389,7 @@ export const addEntry = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'wellness')
 
-    const report = await ctx.db.get(args.reportId)
-    if (!report) throw new Error('That shift report no longer exists.')
+    const report = scoped(staff, await ctx.db.get(args.reportId), 'That shift report no longer exists.')
     if (report.status === 'submitted') throw new Error('That report has already been submitted.')
     if (report.authorId !== staff._id) throw new Error('That is not your shift report.')
 
@@ -447,8 +449,7 @@ export const setEntryResidents = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'wellness')
 
-    const entry = await ctx.db.get(args.entryId)
-    if (!entry) throw new Error('That log entry is no longer on file.')
+    const entry = scoped(staff, await ctx.db.get(args.entryId), 'That log entry is no longer on file.')
     const report = await ctx.db.get(entry.reportId)
     if (!report) throw new Error('That shift report no longer exists.')
     if (report.status === 'submitted') {
@@ -463,6 +464,15 @@ export const setEntryResidents = mutation({
     for (const row of existing) await ctx.db.delete(row._id)
 
     for (const tenantId of [...new Set(args.tenantIds)]) {
+      // Each named resident is checked, not just the entry. Writing the row
+      // with `entry.buildingId` would otherwise file someone else's building's
+      // resident under this one — the participant table is how "everything
+      // logged about this resident" is answered, so a wrong row is a wrong
+      // record on a real person.
+      const tenant = await ctx.db.get(tenantId)
+      if (!tenant || tenant.buildingId !== entry.buildingId) {
+        throw new Error('That resident is not in this building.')
+      }
       await ctx.db.insert('shiftLogParticipants', {
         entryId: args.entryId,
         tenantId,
@@ -488,8 +498,7 @@ export const updateEntry = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'wellness')
 
-    const entry = await ctx.db.get(args.entryId)
-    if (!entry) throw new Error('That log entry is no longer on file.')
+    const entry = scoped(staff, await ctx.db.get(args.entryId), 'That log entry is no longer on file.')
     const report = await ctx.db.get(entry.reportId)
     if (!report) throw new Error('That shift report no longer exists.')
     if (report.status === 'submitted') {
@@ -556,8 +565,7 @@ export const saveDraft = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'wellness')
 
-    const report = await ctx.db.get(args.reportId)
-    if (!report) throw new Error('That shift report no longer exists.')
+    const report = scoped(staff, await ctx.db.get(args.reportId), 'That shift report no longer exists.')
     if (report.status === 'submitted') throw new Error('That report has already been submitted.')
     if (report.authorId !== staff._id) throw new Error('That is not your shift report.')
 
@@ -587,8 +595,7 @@ export const submit = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'wellness')
 
-    const report = await ctx.db.get(args.reportId)
-    if (!report) throw new Error('That shift report no longer exists.')
+    const report = scoped(staff, await ctx.db.get(args.reportId), 'That shift report no longer exists.')
     if (report.status === 'submitted') throw new Error('That report has already been submitted.')
     if (report.authorId !== staff._id) throw new Error('That is not your shift report.')
 

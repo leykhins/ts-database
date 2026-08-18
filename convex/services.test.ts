@@ -56,11 +56,13 @@ async function setup(residents = 3) {
       name: 'Devon Mraz',
       email: 'devon@housing.org',
       role: 'rsw',
+      assignedBuildingIds: [buildingId],
     })
     const manager = await ctx.db.insert('users', {
       name: 'Ada Cole',
       email: 'ada@housing.org',
       role: 'supervisor',
+      assignedBuildingIds: [buildingId],
     })
 
     return { buildingId, tenantIds, worker, manager }

@@ -484,12 +484,134 @@ export function money(cents: number): string {
   )
 }
 
-/** Resolve the building a screen should show: explicit arg, else the first one. */
+/* ------------------------------------------------------------------------
+   Building access
+
+   Staff cover the buildings they are assigned to and no others. This is not a
+   UI filter: a resident's health record, a rent ledger and a visitor ban are
+   all things a worker at another site has no business reading, and the server
+   is where that gets settled.
+
+   Judged on the *effective* role, so an administrator testing as a supervisor
+   is held to that administrator's own assignments — the same principle
+   `effectiveRole` already applies to capabilities. A simulation that quietly
+   kept seeing every building would misrepresent the single most important
+   thing about the role being simulated.
+   ------------------------------------------------------------------------ */
+
+/** The buildings a user may touch. `null` means all of them — administrators. */
+export function assignedBuildingIds(user: Doc<'users'>): Id<'buildings'>[] | null {
+  if (effectiveRole(user) === 'admin') return null
+  return user.assignedBuildingIds ?? []
+}
+
+export function hasBuildingAccess(user: Doc<'users'>, buildingId: Id<'buildings'>): boolean {
+  const allowed = assignedBuildingIds(user)
+  return allowed === null || allowed.includes(buildingId)
+}
+
+/**
+ * Refuse, rather than quietly returning nothing.
+ *
+ * A query that answers an out-of-scope request with `null` renders an empty
+ * screen that reads as "no data" — a worker would conclude the building has no
+ * residents rather than that they are looking at the wrong building. In this
+ * app that is the one failure mode worth designing hardest against.
+ */
+export function assertBuildingAccess(user: Doc<'users'>, buildingId: Id<'buildings'>): void {
+  if (hasBuildingAccess(user, buildingId)) return
+  throw new Error('You are not assigned to that building. Ask an administrator for access.')
+}
+
+/**
+ * Fetch-and-check, for everything that reaches a building through some other
+ * record: a tenant, a room, a work order, a shift-report entry.
+ *
+ * Every building-scoped table in this schema carries `buildingId` directly, so
+ * this is always one hop and never a chain of lookups.
+ *
+ *     const tenant = scoped(staff, await ctx.db.get(args.tenantId),
+ *                           'That resident no longer exists.')
+ */
+export function scoped<T extends { buildingId: Id<'buildings'> }>(
+  user: Doc<'users'>,
+  doc: T | null,
+  missing: string,
+): T {
+  if (!doc) throw new Error(missing)
+  assertBuildingAccess(user, doc.buildingId)
+  return doc
+}
+
+/**
+ * Load a resident the caller is allowed to see.
+ *
+ * Returns `null` when the record does not exist, and *throws* when it exists in
+ * a building the caller does not cover — the two are different answers and must
+ * not be collapsed. Every per-resident read goes through this: a health record,
+ * a SIN, a rent history and a shift note are exactly the things a worker at
+ * another site must not be able to pull up by id.
+ */
+export async function scopedTenant(
+  ctx: QueryCtx | MutationCtx,
+  user: Doc<'users'>,
+  tenantId: Id<'tenants'>,
+): Promise<Doc<'tenants'> | null> {
+  const tenant = await ctx.db.get(tenantId)
+  if (!tenant) return null
+  assertBuildingAccess(user, tenant.buildingId)
+  return tenant
+}
+
+/** The building documents a user may see, for switchers and pickers. */
+export async function assignedBuildings(
+  ctx: QueryCtx | MutationCtx,
+  user: Doc<'users'>,
+): Promise<Doc<'buildings'>[]> {
+  const allowed = assignedBuildingIds(user)
+  if (allowed === null) return await ctx.db.query('buildings').collect()
+  const docs = await Promise.all(allowed.map((id) => ctx.db.get(id)))
+  return docs.filter((b): b is Doc<'buildings'> => b !== null)
+}
+
+/**
+ * Resolve the building a screen should show: the one asked for, or the caller's
+ * first assigned building.
+ *
+ * Never the deployment's first building, which is how a worker at Carrall Annex
+ * ends up reading Dodson's ledger. Takes the caller precisely so that mistake
+ * cannot be made silently — the signature is the reminder.
+ */
 export async function resolveBuilding(
-  ctx: QueryCtx,
+  ctx: QueryCtx | MutationCtx,
+  user: Doc<'users'>,
   buildingId: Id<'buildings'> | undefined,
 ): Promise<Doc<'buildings'> | null> {
-  if (buildingId) return await ctx.db.get(buildingId)
-  const first = await ctx.db.query('buildings').first()
-  return first
+  if (buildingId) {
+    assertBuildingAccess(user, buildingId)
+    return await ctx.db.get(buildingId)
+  }
+  const allowed = assignedBuildingIds(user)
+  if (allowed === null) return await ctx.db.query('buildings').first()
+  for (const id of allowed) {
+    const building = await ctx.db.get(id)
+    if (building) return building
+  }
+  return null
+}
+
+/**
+ * Building configuration for a building the caller is assigned to.
+ *
+ * Two checks, not one: the capability says "may configure a building", the
+ * assignment says "this one". A manager may add a room in their own site and
+ * nowhere else.
+ */
+export async function requireBuildingConfig(
+  ctx: QueryCtx | MutationCtx,
+  buildingId: Id<'buildings'>,
+): Promise<Doc<'users'>> {
+  const user = await requireCapability(ctx, 'building-config')
+  assertBuildingAccess(user, buildingId)
+  return user
 }

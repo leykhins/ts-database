@@ -2,13 +2,21 @@ import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import type { MutationCtx } from './_generated/server'
 import type { Id } from './_generated/dataModel'
-import { requireAdmin, requireCapability, requireStaff } from './model'
+import {
+  assertBuildingAccess,
+  assignedBuildings,
+  requireAdmin,
+  requireBuildingConfig,
+  requireCapability,
+  requireStaff,
+} from './model'
 
+/** The buildings this person covers. Drives the switcher and every picker. */
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx)
-    const buildings = await ctx.db.query('buildings').collect()
+    const staff = await requireStaff(ctx)
+    const buildings = await assignedBuildings(ctx, staff)
 
     return await Promise.all(
       buildings.map(async (b) => {
@@ -34,7 +42,8 @@ export const list = query({
 export const get = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, { buildingId }) => {
-    await requireStaff(ctx)
+    const staff = await requireStaff(ctx)
+    assertBuildingAccess(staff, buildingId)
     return await ctx.db.get(buildingId)
   },
 })
@@ -46,8 +55,10 @@ export const get = query({
 export const listForAdmin = query({
   args: {},
   handler: async (ctx) => {
-    await requireCapability(ctx, 'building-config')
-    const buildings = await ctx.db.query('buildings').collect()
+    // A building manager sees the sites they run; an administrator sees the
+    // portfolio. Same screen, scoped list.
+    const staff = await requireCapability(ctx, 'building-config')
+    const buildings = await assignedBuildings(ctx, staff)
 
     return await Promise.all(
       buildings.map(async (b) => {
@@ -128,9 +139,9 @@ export const update = mutation({
   },
   handler: async (ctx, args) => {
     // Editing a building's own details is building fabric, not portfolio
-    // configuration — a manager may rename the site they run. Creating and
-    // removing buildings below stays with the administrator.
-    await requireCapability(ctx, 'building-config')
+    // configuration — a manager may rename the site they run, and only that
+    // one. Creating and removing buildings below stays with the administrator.
+    await requireBuildingConfig(ctx, args.buildingId)
 
     const building = await ctx.db.get(args.buildingId)
     if (!building) throw new Error('That building no longer exists.')
@@ -183,6 +194,15 @@ export const remove = mutation({
       .withIndex('by_building', (q) => q.eq('buildingId', buildingId))
       .collect()
     for (const room of rooms) await ctx.db.delete(room._id)
+
+    // Strip the building from every staff assignment. A dangling id is a
+    // permission nobody can see in the UI and nobody can revoke.
+    for (const user of await ctx.db.query('users').collect()) {
+      if (!user.assignedBuildingIds?.includes(buildingId)) continue
+      await ctx.db.patch(user._id, {
+        assignedBuildingIds: user.assignedBuildingIds.filter((id) => id !== buildingId),
+      })
+    }
 
     await ctx.db.delete(buildingId)
     return null

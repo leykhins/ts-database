@@ -45,9 +45,9 @@ async function setup() {
     })
 
     const users = {
-      admin: await ctx.db.insert('users', { name: 'Ada', email: 'a@x.org', role: 'admin' }),
-      supervisor: await ctx.db.insert('users', { name: 'Fran', email: 'f@x.org', role: 'supervisor' }),
-      rsw: await ctx.db.insert('users', { name: 'Devon', email: 'd@x.org', role: 'rsw' }),
+      admin: await ctx.db.insert('users', { name: 'Ada', username: 'ada', role: 'admin' }),
+      supervisor: await ctx.db.insert('users', { name: 'Fran', username: 'fran', role: 'supervisor', assignedBuildingIds: [buildingId] }),
+      rsw: await ctx.db.insert('users', { name: 'Devon', username: 'devon', role: 'rsw', assignedBuildingIds: [buildingId] }),
     }
 
     return { buildingId, roomId, tenantId, users }

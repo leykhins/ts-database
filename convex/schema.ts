@@ -205,7 +205,20 @@ export default defineSchema({
      * simulation is real, not a UI trick. Only the *real* role can clear it.
      */
     simulatedRole: v.optional(staffRole),
-    homeBuildingId: v.optional(v.id('buildings')),
+    /**
+     * Every building this person may work in. Absent or empty means none: they
+     * can sign in and see nothing, which is the right starting state for an
+     * account nobody has assigned yet.
+     *
+     * Administrators bypass this entirely — see `model.ts` → `assignedBuildings`.
+     *
+     * Deliberately an array on the user rather than a join table. Convex cannot
+     * index array membership, so an index here would not answer "who works at
+     * Dodson" anyway; the only query that wants that is a staff-at-this-building
+     * panel that does not exist, and `users.list` already collects the whole
+     * table. Revisit past a few hundred staff.
+     */
+    assignedBuildingIds: v.optional(v.array(v.id('buildings'))),
   })
     .index('by_username', ['username'])
     // `email` and `phone` are kept because Convex Auth's own

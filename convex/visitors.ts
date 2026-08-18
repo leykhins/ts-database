@@ -3,10 +3,12 @@ import { mutation, query } from './_generated/server'
 import type { Doc, Id } from './_generated/dataModel'
 import type { MutationCtx, QueryCtx } from './_generated/server'
 import {
+  scopedTenant,
   localDate,
   photoUrlsFor,
   requireCapability,
   requireStaff,
+  scoped,
   resolveBuilding,
 } from './model'
 
@@ -95,8 +97,8 @@ export const board = query({
     tzOffsetMinutes: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const today = localDate(args.now, args.tzOffsetMinutes)
@@ -258,7 +260,8 @@ export const board = query({
 export const visitorHistory = query({
   args: { visitorId: v.id('visitors') },
   handler: async (ctx, { visitorId }) => {
-    await requireStaff(ctx)
+    const staff = await requireStaff(ctx)
+    scoped(staff, await ctx.db.get(visitorId), 'That visitor record no longer exists.')
 
     const visits = await ctx.db
       .query('visits')
@@ -291,7 +294,7 @@ export const register = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'wellness')
+    const staff = await requireCapability(ctx, 'wellness')
 
     const name = args.name.trim()
     if (!name) throw new Error('Enter the visitor’s name.')
@@ -315,7 +318,7 @@ export const register = mutation({
 export const generatePhotoUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
-    await requireCapability(ctx, 'wellness')
+    const staff = await requireCapability(ctx, 'wellness')
     return await ctx.storage.generateUploadUrl()
   },
 })
@@ -323,10 +326,9 @@ export const generatePhotoUploadUrl = mutation({
 export const setPhoto = mutation({
   args: { visitorId: v.id('visitors'), storageId: v.id('_storage') },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'wellness')
+    const staff = await requireCapability(ctx, 'wellness')
 
-    const visitor = await ctx.db.get(args.visitorId)
-    if (!visitor) throw new Error('That visitor is no longer on file.')
+    const visitor = scoped(staff, await ctx.db.get(args.visitorId), 'That visitor is no longer on file.')
     if (visitor.photoId) await ctx.storage.delete(visitor.photoId)
 
     await ctx.db.patch(args.visitorId, { photoId: args.storageId })
@@ -408,8 +410,7 @@ export const signOut = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'wellness')
 
-    const visit = await ctx.db.get(args.visitId)
-    if (!visit) throw new Error('That visit is no longer on file.')
+    const visit = scoped(staff, await ctx.db.get(args.visitId), 'That visit is no longer on file.')
     if (visit.signedOutAt) throw new Error('That visitor has already been signed out.')
 
     await ctx.db.patch(args.visitId, { signedOutAt: args.now, signedOutBy: staff._id })
@@ -432,8 +433,7 @@ export const setBan = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'site-config')
 
-    const visitor = await ctx.db.get(args.visitorId)
-    if (!visitor) throw new Error('That visitor is no longer on file.')
+    const visitor = scoped(staff, await ctx.db.get(args.visitorId), 'That visitor is no longer on file.')
 
     if (!args.banned) {
       await ctx.db.patch(args.visitorId, {
@@ -517,7 +517,7 @@ export const authorizeOvernight = mutation({
 export const revokeOvernight = mutation({
   args: { authorizationId: v.id('overnightAuthorizations'), now: v.number() },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'site-config')
+    const staff = await requireCapability(ctx, 'site-config')
     await ctx.db.patch(args.authorizationId, { revokedAt: args.now })
     return null
   },
@@ -530,7 +530,8 @@ export const revokeOvernight = mutation({
 export const overnightFor = query({
   args: { tenantId: v.id('tenants'), now: v.number(), tzOffsetMinutes: v.number() },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
+    const staff = await requireStaff(ctx)
+    if (!(await scopedTenant(ctx, staff, args.tenantId))) return []
 
     const today = localDate(args.now, args.tzOffsetMinutes)
     const rows = await ctx.db

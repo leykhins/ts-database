@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
-import { requireCapability, requireStaff, resolveBuilding } from './model'
+import { requireCapability, requireStaff, resolveBuilding, scoped } from './model'
 
 /**
  * Critical needs — residents with an open case, and what is on file.
@@ -16,8 +16,8 @@ export const list = query({
     includeResolved: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const buildingId = building._id
@@ -100,10 +100,9 @@ export const open = mutation({
     caseManager: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'care')
+    const staff = await requireCapability(ctx, 'care')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
     if (!args.summary.trim()) throw new Error('Summarise the need in one line.')
 
     return await ctx.db.insert('criticalNeeds', {
@@ -125,10 +124,9 @@ export const update = mutation({
     caseManager: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'care')
+    const staff = await requireCapability(ctx, 'care')
 
-    const need = await ctx.db.get(args.needId)
-    if (!need) throw new Error('That case is no longer on file.')
+    const need = scoped(staff, await ctx.db.get(args.needId), 'That case is no longer on file.')
 
     const patch: Record<string, unknown> = {}
     if (args.summary !== undefined) {
@@ -149,10 +147,9 @@ export const update = mutation({
 export const resolve = mutation({
   args: { needId: v.id('criticalNeeds'), resolved: v.boolean() },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'care')
+    const staff = await requireCapability(ctx, 'care')
 
-    const need = await ctx.db.get(args.needId)
-    if (!need) throw new Error('That case is no longer on file.')
+    const need = scoped(staff, await ctx.db.get(args.needId), 'That case is no longer on file.')
 
     await ctx.db.patch(args.needId, {
       resolvedAt: args.resolved ? Date.now() : undefined,

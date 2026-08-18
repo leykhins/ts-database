@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
-import { CHECK_INTERVAL_MS, requireCapability, requireStaff, resolveBuilding } from './model'
+import { CHECK_INTERVAL_MS, requireCapability, requireStaff, resolveBuilding, scoped } from './model'
 
 const outcome = v.union(
   v.literal('all-clear'),
@@ -12,8 +12,8 @@ const outcome = v.union(
 export const list = query({
   args: { buildingId: v.optional(v.id('buildings')) },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const buildingId = building._id
@@ -43,9 +43,9 @@ export const list = query({
     const staffIds = [
       ...new Set(recent.map((c) => c.completedBy).filter(Boolean)),
     ] as NonNullable<(typeof recent)[number]['completedBy']>[]
-    const staff = await Promise.all(staffIds.map((id) => ctx.db.get(id)))
+    const completers = await Promise.all(staffIds.map((id) => ctx.db.get(id)))
     const staffName = new Map(
-      staff.filter(Boolean).map((u) => [u!._id as string, u!.name ?? u!.username ?? 'Staff']),
+      completers.filter(Boolean).map((u) => [u!._id as string, u!.name ?? u!.username ?? 'Staff']),
     )
 
     const lastByRoom = new Map<string, (typeof recent)[number]>()
@@ -103,8 +103,7 @@ export const completeRoomCheck = mutation({
   },
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'checks')
-    const room = await ctx.db.get(args.roomId)
-    if (!room) throw new Error('Room not found.')
+    const room = scoped(staff, await ctx.db.get(args.roomId), 'Room not found.')
 
     const completedAt = Date.now()
     await ctx.db.insert('roomChecks', {

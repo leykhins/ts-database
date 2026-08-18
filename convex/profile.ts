@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import type { Doc, Id } from './_generated/dataModel'
 import { conditionFlag, healthProfile } from './schema'
-import { can, requireCapability, requireStaff } from './model'
+import { can, requireCapability, requireStaff, scoped, scopedTenant } from './model'
 
 /**
  * The resident record — bio data, health, contacts, and the sheet that gets
@@ -58,7 +58,7 @@ export const get = query({
   handler: async (ctx, { tenantId }) => {
     const staff = await requireStaff(ctx)
 
-    const tenant = await ctx.db.get(tenantId)
+    const tenant = await scopedTenant(ctx, staff, tenantId)
     if (!tenant) return null
 
     const [building, room, contacts, photoUrl] = await Promise.all([
@@ -150,6 +150,7 @@ export const revealSin = query({
     if (!canSeeSin(staff)) {
       throw new Error('Your role does not have access to social insurance numbers.')
     }
+    await scopedTenant(ctx, staff, tenantId)
 
     const tenant = await ctx.db.get(tenantId)
     return tenant?.sin ?? null
@@ -165,7 +166,8 @@ export const revealSin = query({
 export const shiftNotes = query({
   args: { tenantId: v.id('tenants') },
   handler: async (ctx, { tenantId }) => {
-    await requireStaff(ctx)
+    const staff = await requireStaff(ctx)
+    if (!(await scopedTenant(ctx, staff, tenantId))) return []
 
     // The reverse lookup runs through the join table: every entry that named
     // this resident, newest first.
@@ -245,7 +247,7 @@ export const sheet = query({
   handler: async (ctx, args) => {
     const staff = await requireStaff(ctx)
 
-    const tenant = await ctx.db.get(args.tenantId)
+    const tenant = await scopedTenant(ctx, staff, args.tenantId)
     if (!tenant) return null
 
     const [building, room, contacts, photoUrl] = await Promise.all([
@@ -335,8 +337,7 @@ export const updateIdentity = mutation({
   handler: async (ctx, args) => {
     const staff = await requireCapability(ctx, 'tenancy')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
 
     const patch: Record<string, unknown> = {}
     for (const key of ['preferredName', 'pronouns', 'populationGroup', 'phone', 'languages', 'writeUp'] as const) {
@@ -362,10 +363,9 @@ export const updateIdentity = mutation({
 export const updateHealth = mutation({
   args: { tenantId: v.id('tenants'), health: healthProfile },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'care')
+    const staff = await requireCapability(ctx, 'care')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
 
     // Merge rather than replace: a form that only asked about mobility must
     // not silently clear a DNR order somebody recorded last year.
@@ -386,10 +386,9 @@ export const setFlags = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'care')
+    const staff = await requireCapability(ctx, 'care')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
 
     await ctx.db.patch(args.tenantId, { flags: { ...(tenant.flags ?? {}), ...args.flags } })
     return null
@@ -409,10 +408,9 @@ export const updateIntake = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
 
     await ctx.db.patch(args.tenantId, { intake: { ...(tenant.intake ?? {}), ...args.intake } })
     return null
@@ -430,10 +428,9 @@ export const updateDocuments = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
 
     await ctx.db.patch(args.tenantId, {
       documents: { ...(tenant.documents ?? {}), ...args.documents },
@@ -455,10 +452,9 @@ export const addContact = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
     if (!args.name.trim()) throw new Error('Enter the contact’s name.')
     if (!args.relationship.trim()) throw new Error('Say how they are related.')
 
@@ -489,7 +485,7 @@ export const addContact = mutation({
 export const removeContact = mutation({
   args: { contactId: v.id('tenantContacts') },
   handler: async (ctx, { contactId }) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
     await ctx.db.delete(contactId)
     return null
   },
@@ -505,7 +501,7 @@ export const removeContact = mutation({
 export const generatePhotoUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
     return await ctx.storage.generateUploadUrl()
   },
 })
@@ -513,10 +509,9 @@ export const generatePhotoUploadUrl = mutation({
 export const setPhoto = mutation({
   args: { tenantId: v.id('tenants'), storageId: v.id('_storage') },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
 
-    const tenant = await ctx.db.get(args.tenantId)
-    if (!tenant) throw new Error('That resident no longer exists.')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
 
     // Replacing a photo removes the old file rather than orphaning it.
     if (tenant.photoId) await ctx.storage.delete(tenant.photoId)
@@ -529,7 +524,7 @@ export const setPhoto = mutation({
 export const removePhoto = mutation({
   args: { tenantId: v.id('tenants') },
   handler: async (ctx, { tenantId }) => {
-    await requireCapability(ctx, 'tenancy')
+    const staff = await requireCapability(ctx, 'tenancy')
 
     const tenant = await ctx.db.get(tenantId)
     if (!tenant?.photoId) return null

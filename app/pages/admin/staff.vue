@@ -32,7 +32,7 @@ const { data: staff, isLoading } = useConvexQuery(api.users.list)
 const { data: buildings } = useConvexQuery(api.buildings.list)
 
 const { mutate: updateRole } = useConvexMutation(api.users.updateRole)
-const { mutate: setHomeBuilding } = useConvexMutation(api.users.setHomeBuilding)
+const { mutate: setAssignedBuildings } = useConvexMutation(api.users.setAssignedBuildings)
 const { run: resetPassword } = useConvexAction(api.users.resetPassword)
 const { run: removeStaff, pending: removePending } = useConvexAction(api.users.remove)
 
@@ -40,7 +40,6 @@ type StaffRow = NonNullable<typeof staff.value>[number]
 type Role = StaffRow['role']
 
 
-const NO_BUILDING = 'none'
 const addOpen = ref(false)
 
 const buildingOptions = computed(() =>
@@ -61,15 +60,28 @@ async function changeRole(row: StaffRow, role: string) {
   }
 }
 
-async function changeBuilding(row: StaffRow, value: string) {
+/** What the trigger says, without making the column wider than it deserves. */
+function buildingLabel(row: StaffRow): string {
+  if (row.reachesAllBuildings) return 'All buildings'
+  const names = row.assignedBuildings
+  if (names.length === 0) return 'None'
+  if (names.length === 1) return names[0]!
+  return `${names[0]} +${names.length - 1}`
+}
+
+async function toggleBuilding(row: StaffRow, buildingId: Id<'buildings'>, assigned: boolean) {
+  const next = assigned
+    ? [...row.assignedBuildingIds, buildingId]
+    : row.assignedBuildingIds.filter((id) => id !== buildingId)
   try {
-    await setHomeBuilding({
-      userId: row._id,
-      homeBuildingId: value === NO_BUILDING ? null : (value as Id<'buildings'>),
-    })
-    toast.success(`${row.name}'s home building updated`)
+    await setAssignedBuildings({ userId: row._id, buildingIds: next })
+    toast.success(
+      next.length === 0
+        ? `${row.name} is no longer assigned to a building`
+        : `${row.name} now covers ${next.length} ${next.length === 1 ? 'building' : 'buildings'}`,
+    )
   } catch (e) {
-    toast.error('Could not set the home building', { description: (e as Error).message })
+    toast.error('Could not change the assignment', { description: (e as Error).message })
   }
 }
 
@@ -129,7 +141,7 @@ async function remove(row: StaffRow) {
           <TableHead class="w-[160px]">Username</TableHead>
           <TableHead class="w-[200px]">Email</TableHead>
           <TableHead class="w-[190px]">Role</TableHead>
-          <TableHead class="w-[190px]">Home building</TableHead>
+          <TableHead class="w-[190px]">Buildings</TableHead>
           <TableHead class="w-[120px]">Added</TableHead>
           <TableHead class="w-[110px]" />
         </TableRow>
@@ -165,20 +177,42 @@ async function remove(row: StaffRow) {
           </TableCell>
 
           <TableCell>
-            <Select
-              :model-value="row.homeBuildingId ?? NO_BUILDING"
-              @update:model-value="(value) => changeBuilding(row, String(value))"
-            >
-              <SelectTrigger class="w-full" :aria-label="`Home building for ${row.name}`">
-                <SelectValue placeholder="Any" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem :value="NO_BUILDING">No home building</SelectItem>
-                <SelectItem v-for="b in buildingOptions" :key="b._id" :value="b._id">
+            <!--
+              Administrators reach every building by role, so there is nothing
+              to assign — showing an editable picker would imply their access
+              could be narrowed here, which it cannot.
+            -->
+            <span
+              v-if="row.reachesAllBuildings"
+              class="text-muted-foreground"
+              title="Administrators reach every building"
+            >All buildings</span>
+            <DropdownMenu v-else>
+              <DropdownMenuTrigger as-child>
+                <Button
+                  variant="secondary"
+                  class="w-full justify-between font-normal"
+                  :aria-label="`Buildings ${row.name} covers`"
+                >
+                  <span :class="row.assignedBuildingIds.length ? '' : 'text-muted-foreground'">
+                    {{ buildingLabel(row) }}
+                  </span>
+                  <DsIcon name="chevron-down" :size="15" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" class="w-56">
+                <DropdownMenuLabel>Buildings this person covers</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  v-for="b in buildingOptions"
+                  :key="b._id"
+                  :model-value="row.assignedBuildingIds.includes(b._id)"
+                  @update:model-value="(checked) => toggleBuilding(row, b._id, Boolean(checked))"
+                  @select="(e) => e.preventDefault()"
+                >
                   {{ b.name }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </TableCell>
 
           <TableCell class="text-muted-foreground">{{ formatDate(row.createdAt) }}</TableCell>

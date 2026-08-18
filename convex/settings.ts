@@ -100,8 +100,8 @@ export function laundrySlots(laundry: SiteSettings['laundry']) {
 export const get = query({
   args: { buildingId: v.optional(v.id('buildings')) },
   handler: async (ctx, args) => {
-    await requireStaff(ctx)
-    const building = await resolveBuilding(ctx, args.buildingId)
+    const staff = await requireStaff(ctx)
+    const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) return null
 
     const settings = await settingsFor(ctx, building._id)
@@ -134,7 +134,7 @@ export const setMeals = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'site-config')
+    const staff = await requireCapability(ctx, 'site-config')
 
     for (const sitting of args.meals) {
       if (sitting.toMinutes <= sitting.fromMinutes) {
@@ -160,7 +160,7 @@ export const setLaundry = mutation({
     maxPerResidentPerWeek: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'site-config')
+    const staff = await requireCapability(ctx, 'site-config')
 
     if (args.toMinutes <= args.fromMinutes) {
       throw new Error('The laundry room has to close after it opens.')
@@ -191,7 +191,7 @@ export const setSupplyLimits = mutation({
     supplyLimits: v.record(v.string(), v.number()),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, 'site-config')
+    const staff = await requireCapability(ctx, 'site-config')
 
     for (const [item, limit] of Object.entries(args.supplyLimits)) {
       if (!Number.isInteger(limit) || limit < 0) {
