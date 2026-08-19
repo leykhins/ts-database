@@ -8,17 +8,46 @@ import { api } from '../../convex/_generated/api'
  * `isReady` distinguishes "not an admin" from "we don't know yet", so the page
  * shows a loading state instead of flashing a refusal at an administrator.
  */
+/**
+ * Send someone away from a screen their current role may not see.
+ *
+ * `null` means "not known yet" and must not redirect — otherwise an
+ * administrator gets bounced during the moment before `users.me` first
+ * resolves.
+ *
+ * A `watch` on a boolean rather than a `watchEffect` over the whole document:
+ * the effect form re-ran on every unrelated field of `me` and, more
+ * importantly, its `navigateTo` was fire-and-forget, so a rejected navigation
+ * disappeared silently. That is what left an administrator who switched to a
+ * non-admin role sitting on `/admin/staff` while the page's own query started
+ * refusing them — a screen that looks broken and gives no way to understand
+ * why.
+ */
+function redirectWhenDisallowed(allowed: Ref<boolean | null>) {
+  watch(
+    allowed,
+    async (value) => {
+      if (value !== false) return
+      try {
+        await navigateTo('/', { replace: true })
+      } catch {
+        // A navigation cancelled by a newer one is fine; anything else will be
+        // caught by the guard re-running on the next change.
+      }
+    },
+    { immediate: true },
+  )
+}
+
 export function useRequireAdmin() {
   const { data: me } = useConvexQuery(api.users.me)
 
   const isReady = computed(() => me.value !== undefined)
   const isAdmin = computed(() => me.value?.isAdmin === true)
 
-  watchEffect(() => {
-    if (me.value !== undefined && me.value !== null && !me.value.isAdmin) {
-      navigateTo('/')
-    }
-  })
+  redirectWhenDisallowed(
+    computed(() => (me.value === undefined ? null : me.value?.isAdmin === true)),
+  )
 
   return { me, isAdmin, isReady }
 }
@@ -34,11 +63,11 @@ export function useRequireCapability(capability: Capability) {
   const isReady = computed(() => me.value !== undefined)
   const allowed = computed(() => me.value?.capabilities?.includes(capability) === true)
 
-  watchEffect(() => {
-    if (me.value !== undefined && me.value !== null && !allowed.value) {
-      navigateTo('/')
-    }
-  })
+  redirectWhenDisallowed(
+    computed(() =>
+      me.value === undefined ? null : me.value?.capabilities?.includes(capability) === true,
+    ),
+  )
 
   return { me, allowed, isReady }
 }
