@@ -44,15 +44,22 @@ const { data: overview } = useConvexQuery(api.dashboard.overview, () => ({
 // Drop a remembered building that is no longer on offer — deleted, or no
 // longer assigned to this person. Without this the stored id outlives the
 // thing it names and every screen asks for a building the server won't return.
-watchEffect(() => reconcile(buildings.value))
+//
+// `watch` on the list, not `watchEffect`: reconcile both reads and writes the
+// selection, so as an effect it tracked the very ref it mutates and re-entered
+// itself — Vue's "Maximum recursive updates exceeded", which pegs the tab.
+watch(buildings, (list) => reconcile(list), { immediate: true })
 
 // Nothing chosen yet (first sign-in, cleared storage): follow the server's
-// default so the switcher label matches what the screens are showing.
-watchEffect(() => {
-  if (!selected.value && overview.value?.building) {
-    select(overview.value.building._id)
-  }
-})
+// default so the switcher label matches what the screens are showing. Same
+// reasoning as above — this writes the selection, so it must not track it.
+watch(
+  () => overview.value?.building?._id,
+  (buildingId) => {
+    if (!selected.value && buildingId) select(buildingId)
+  },
+  { immediate: true },
+)
 
 const currentBuilding = computed(() => overview.value?.building ?? null)
 

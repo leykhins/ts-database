@@ -48,7 +48,7 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
     }
 
     isLoading.value = data.value === undefined
-    unsubscribe = $convex.onUpdate(
+    const subscription = $convex.onUpdate(
       query,
       resolved,
       (result) => {
@@ -61,6 +61,7 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
         isLoading.value = false
       },
     )
+    unsubscribe = subscription
   }
 
   watch(
