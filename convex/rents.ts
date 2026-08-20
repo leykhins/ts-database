@@ -162,12 +162,32 @@ export async function chargePeriod(
   periodLabel: string,
   postedBy?: Id<'users'>,
 ): Promise<{ charged: number; skipped: number; amountCents: number }> {
-  const tenants = await ctx.db
+  /*
+     Charge the people this site bills, not the people standing in it.
+
+     A resident on a temporary transfer is living elsewhere while their room
+     here stays empty for them, so this site keeps charging and the receiving
+     site does not — one tenancy, one rent, inside one organisation. That means
+     collecting from two directions: everyone housed here who is not away, plus
+     everyone away whose home is here.
+  */
+  const here = await ctx.db
     .query('tenants')
     .withIndex('by_building_status', (q) =>
       q.eq('buildingId', buildingId).eq('status', 'current'),
     )
     .collect()
+
+  const away = await ctx.db
+    .query('tenants')
+    .withIndex('by_home_building', (q) => q.eq('homeBuildingId', buildingId))
+    .filter((q) => q.eq(q.field('status'), 'current'))
+    .collect()
+
+  const tenants = [
+    ...here.filter((t) => t.homeBuildingId === undefined),
+    ...away,
+  ]
 
   const alreadyCharged = new Set<string>()
   for (const t of tenants) {

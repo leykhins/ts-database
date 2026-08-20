@@ -2,14 +2,16 @@ import { v } from 'convex/values'
 import { internalMutation, mutation, query } from './_generated/server'
 import { supportLevel, tenancyStatus } from './schema'
 import {
-  scopedTenant,
   assertBuildingAccess,
+  billingBuildingId,
   photoUrlsFor,
   recomputeTenantRollups,
+  recordPlacement,
   requireCapability,
   requireStaff,
-  scoped,
   resolveBuilding,
+  scoped,
+  scopedTenant,
 } from './model'
 
 /** Roster for the Tenants screen: one row per tenant with money rolled up. */
@@ -191,7 +193,24 @@ export const vacancies = query({
         .collect(),
     ])
 
-    const taken = new Set(current.map((t) => t.roomId).filter(Boolean))
+    /*
+       A room is taken if someone lives in it — or if it is being held for
+       someone who is temporarily at another site. The hold is the whole point
+       of a temporary transfer: offering their room to the next intake is how
+       a resident comes back to find they no longer have one.
+    */
+    const held = await ctx.db
+      .query('tenants')
+      .withIndex('by_home_building', (q) => q.eq('homeBuildingId', buildingId))
+      .filter((q) => q.eq(q.field('status'), 'current'))
+      .collect()
+
+    const taken = new Set(
+      [
+        ...current.map((t) => t.roomId),
+        ...held.map((t) => t.heldRoomId),
+      ].filter(Boolean),
+    )
 
     return rooms
       .filter((r) => !r.outOfService && !taken.has(r._id))
@@ -265,7 +284,7 @@ export const create = mutation({
       }
     }
 
-    return await ctx.db.insert('tenants', {
+    const tenantId = await ctx.db.insert('tenants', {
       buildingId: args.buildingId,
       roomId: args.roomId,
       name,
@@ -281,6 +300,20 @@ export const create = mutation({
       balanceCents: 0,
       depositHeldCents: 0,
     })
+
+    // The record of where someone has lived starts at the door.
+    const tenant = await ctx.db.get(tenantId)
+    if (tenant) {
+      await recordPlacement(ctx, tenant, {
+        buildingId: args.buildingId,
+        roomId: args.roomId,
+        kind: 'intake',
+        reason: 'Intake',
+        recordedBy: staff._id,
+      })
+    }
+
+    return tenantId
   },
 })
 
@@ -451,5 +484,285 @@ export const backfillRollups = internalMutation({
       await recomputeTenantRollups(ctx, tenant._id)
     }
     return { tenants: tenants.length }
+  },
+})
+
+/* ------------------------------------------------------------------------
+   Moving between sites
+
+   A resident can be sent to another site for a while so their behaviour can be
+   assessed somewhere different, moved permanently, or evicted. Each of those
+   is a placement, not an edit: overwriting `buildingId` would lose the fact
+   that they were ever anywhere else, and a site has to be able to answer for
+   who it housed and when.
+   ------------------------------------------------------------------------ */
+
+/**
+ * Send a resident to another site.
+ *
+ * Temporary keeps their room and their rent at the home site — the room stays
+ * empty for them, and nobody is asked to pay two sites of one organisation for
+ * one tenancy. Permanent hands the whole tenancy over, room and billing with it.
+ */
+export const transferSite = mutation({
+  args: {
+    tenantId: v.id('tenants'),
+    toBuildingId: v.id('buildings'),
+    roomId: v.optional(v.id('rooms')),
+    temporary: v.boolean(),
+    expectedReturn: v.optional(v.number()),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const staff = await requireCapability(ctx, 'tenancy')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
+
+    if (!args.reason.trim()) throw new Error('Say why this resident is moving.')
+    if (args.toBuildingId === tenant.buildingId) {
+      throw new Error('That resident is already at this site.')
+    }
+    // The receiving site must be one the mover actually covers, or a transfer
+    // becomes a way to push a resident somewhere nobody agreed to take them.
+    assertBuildingAccess(staff, args.toBuildingId)
+
+    const destination = await ctx.db.get(args.toBuildingId)
+    if (!destination) throw new Error('That building no longer exists.')
+
+    if (args.roomId) {
+      const room = await ctx.db.get(args.roomId)
+      if (!room || room.buildingId !== args.toBuildingId) {
+        throw new Error('That room is not in the receiving building.')
+      }
+      if (room.outOfService) throw new Error(`Room ${room.number} is out of service.`)
+      const occupant = await ctx.db
+        .query('tenants')
+        .withIndex('by_room', (q) => q.eq('roomId', args.roomId!))
+        .filter((q) => q.eq(q.field('status'), 'current'))
+        .first()
+      if (occupant && occupant._id !== tenant._id) {
+        throw new Error(`Room ${room.number} is already housing someone.`)
+      }
+    }
+
+    const home = billingBuildingId(tenant)
+
+    await ctx.db.patch(tenant._id, {
+      buildingId: args.toBuildingId,
+      roomId: args.roomId,
+      ...(args.temporary
+        ? {
+            // Hold the room and the billing where they were.
+            homeBuildingId: home,
+            heldRoomId: tenant.roomId,
+            awayUntil: args.expectedReturn,
+          }
+        : {
+            // A permanent move takes everything with it; nothing is held.
+            homeBuildingId: undefined,
+            heldRoomId: undefined,
+            awayUntil: undefined,
+          }),
+    })
+
+    await recordPlacement(ctx, tenant, {
+      buildingId: args.toBuildingId,
+      roomId: args.roomId,
+      kind: args.temporary ? 'transfer-temporary' : 'transfer-permanent',
+      reason: args.reason.trim(),
+      expectedReturn: args.expectedReturn,
+      recordedBy: staff._id,
+    })
+    return null
+  },
+})
+
+/** Bring a temporarily transferred resident back to the room held for them. */
+export const returnHome = mutation({
+  args: { tenantId: v.id('tenants'), reason: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const staff = await requireCapability(ctx, 'tenancy')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
+
+    const home = tenant.homeBuildingId
+    if (!home) throw new Error('That resident is not away from their home site.')
+
+    await ctx.db.patch(tenant._id, {
+      buildingId: home,
+      roomId: tenant.heldRoomId,
+      homeBuildingId: undefined,
+      heldRoomId: undefined,
+      awayUntil: undefined,
+    })
+
+    await recordPlacement(ctx, tenant, {
+      buildingId: home,
+      roomId: tenant.heldRoomId,
+      kind: 'return',
+      reason: args.reason?.trim() || 'Returned from temporary transfer',
+      recordedBy: staff._id,
+    })
+    return null
+  },
+})
+
+/**
+ * Evict a resident.
+ *
+ * Ends the tenancy and frees the room, but keeps the person's record and their
+ * whole history — an eviction can be revoked, and someone who comes back should
+ * not arrive as a stranger.
+ */
+export const evict = mutation({
+  args: { tenantId: v.id('tenants'), reason: v.string(), exitDate: v.string() },
+  handler: async (ctx, args) => {
+    const staff = await requireCapability(ctx, 'tenancy')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
+    if (!args.reason.trim()) throw new Error('An eviction has to say why.')
+
+    await ctx.db.patch(tenant._id, {
+      status: 'prior',
+      exitDate: args.exitDate,
+      exitReason: `Evicted — ${args.reason.trim()}`,
+      roomId: undefined,
+      homeBuildingId: undefined,
+      heldRoomId: undefined,
+      awayUntil: undefined,
+    })
+
+    await recordPlacement(ctx, tenant, {
+      buildingId: billingBuildingId(tenant),
+      kind: 'eviction',
+      reason: args.reason.trim(),
+      recordedBy: staff._id,
+    })
+    return null
+  },
+})
+
+/**
+ * Revoke an eviction and house the resident again, at any site.
+ *
+ * Deliberately a new placement rather than an undo: the record should show
+ * that they were evicted and then brought back, not that it never happened.
+ */
+export const reinstate = mutation({
+  args: {
+    tenantId: v.id('tenants'),
+    buildingId: v.id('buildings'),
+    roomId: v.optional(v.id('rooms')),
+    reason: v.string(),
+    intakeDate: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const staff = await requireCapability(ctx, 'tenancy')
+    const tenant = scoped(staff, await ctx.db.get(args.tenantId), 'That resident no longer exists.')
+    if (tenant.status === 'current') throw new Error('That resident is already housed.')
+    if (!args.reason.trim()) throw new Error('Say why the eviction is being revoked.')
+    assertBuildingAccess(staff, args.buildingId)
+
+    if (args.roomId) {
+      const room = await ctx.db.get(args.roomId)
+      if (!room || room.buildingId !== args.buildingId) {
+        throw new Error('That room is not in this building.')
+      }
+      const occupant = await ctx.db
+        .query('tenants')
+        .withIndex('by_room', (q) => q.eq('roomId', args.roomId!))
+        .filter((q) => q.eq(q.field('status'), 'current'))
+        .first()
+      if (occupant) throw new Error(`Room ${room.number} is already housing someone.`)
+    }
+
+    await ctx.db.patch(tenant._id, {
+      status: 'current',
+      buildingId: args.buildingId,
+      roomId: args.roomId,
+      intakeDate: args.intakeDate,
+      exitDate: undefined,
+      exitReason: undefined,
+    })
+
+    await recordPlacement(ctx, tenant, {
+      buildingId: args.buildingId,
+      roomId: args.roomId,
+      kind: 'return',
+      reason: `Eviction revoked — ${args.reason.trim()}`,
+      recordedBy: staff._id,
+    })
+    return null
+  },
+})
+
+/** Everywhere this resident has lived, newest first. */
+export const placementHistory = query({
+  args: { tenantId: v.id('tenants') },
+  handler: async (ctx, { tenantId }) => {
+    const staff = await requireStaff(ctx)
+    if (!(await scopedTenant(ctx, staff, tenantId))) return []
+
+    const placements = await ctx.db
+      .query('placements')
+      .withIndex('by_tenant', (q) => q.eq('tenantId', tenantId))
+      .collect()
+
+    const buildings = new Map<string, string>()
+    const rooms = new Map<string, string>()
+    for (const p of placements) {
+      if (!buildings.has(p.buildingId)) {
+        buildings.set(p.buildingId, (await ctx.db.get(p.buildingId))?.name ?? '—')
+      }
+      if (p.roomId && !rooms.has(p.roomId)) {
+        rooms.set(p.roomId, (await ctx.db.get(p.roomId))?.number ?? '—')
+      }
+    }
+
+    return placements
+      // `_creationTime` breaks ties: two placements written in the same
+      // millisecond (close one, open the next) would otherwise sort arbitrarily.
+      .sort((a, b) => b.startedAt - a.startedAt || b._creationTime - a._creationTime)
+      .map((p) => ({
+        _id: p._id,
+        kind: p.kind,
+        building: buildings.get(p.buildingId) ?? '—',
+        room: p.roomId ? rooms.get(p.roomId) ?? '—' : null,
+        startedAt: p.startedAt,
+        endedAt: p.endedAt ?? null,
+        expectedReturn: p.expectedReturn ?? null,
+        reason: p.reason ?? null,
+      }))
+  },
+})
+
+/** Who has lived in this room, newest first. */
+export const roomHistory = query({
+  args: { roomId: v.id('rooms') },
+  handler: async (ctx, { roomId }) => {
+    const staff = await requireStaff(ctx)
+    const room = scoped(staff, await ctx.db.get(roomId), 'That room no longer exists.')
+
+    const placements = await ctx.db
+      .query('placements')
+      .withIndex('by_room', (q) => q.eq('roomId', roomId))
+      .collect()
+
+    const names = new Map<string, string>()
+    for (const p of placements) {
+      if (names.has(p.tenantId)) continue
+      names.set(p.tenantId, (await ctx.db.get(p.tenantId))?.name ?? '—')
+    }
+
+    return {
+      room: { _id: room._id, number: room.number, floor: room.floor },
+      history: placements
+        .sort((a, b) => b.startedAt - a.startedAt || b._creationTime - a._creationTime)
+        .map((p) => ({
+          _id: p._id,
+          tenantId: p.tenantId,
+          name: names.get(p.tenantId) ?? '—',
+          kind: p.kind,
+          startedAt: p.startedAt,
+          endedAt: p.endedAt ?? null,
+        })),
+    }
   },
 })

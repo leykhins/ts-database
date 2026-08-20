@@ -247,9 +247,63 @@ export default defineSchema({
     .index('by_building_number', ['buildingId', 'number'])
     .index('by_building_sort', ['buildingId', 'sortKey']),
 
-  tenants: defineTable({
+  /**
+   * Where a resident has lived, and why it changed.
+   *
+   * Append-only. `tenants.buildingId`/`roomId` say where someone is *now*;
+   * this says how they got there and where they were before. A resident can be
+   * moved between sites temporarily for evaluation, permanently, or evicted
+   * and later reinstated, and each of those has to survive in the record — a
+   * site is answerable for who it housed and when, long after they leave.
+   */
+  placements: defineTable({
+    tenantId: v.id('tenants'),
     buildingId: v.id('buildings'),
     roomId: v.optional(v.id('rooms')),
+    kind: v.union(
+      v.literal('intake'),
+      v.literal('room-move'),
+      v.literal('transfer-temporary'),
+      v.literal('transfer-permanent'),
+      v.literal('eviction'),
+      v.literal('return'),
+      v.literal('exit'),
+    ),
+    startedAt: v.number(),
+    /** Absent while this is the placement the resident is living in. */
+    endedAt: v.optional(v.number()),
+    /** Temporary transfers only: when the receiving site expects to hand back. */
+    expectedReturn: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    recordedBy: v.optional(v.id('users')),
+  })
+    .index('by_tenant', ['tenantId'])
+    .index('by_tenant_started', ['tenantId', 'startedAt'])
+    .index('by_building', ['buildingId'])
+    .index('by_room', ['roomId']),
+
+  tenants: defineTable({
+    /**
+     * Where this resident physically is. Checks, meals, wellness and the room
+     * grid all follow this, so during a temporary transfer it is the receiving
+     * site — those are the staff who actually see them.
+     */
+    buildingId: v.id('buildings'),
+    roomId: v.optional(v.id('rooms')),
+
+    /**
+     * The site holding their room and their rent.
+     *
+     * Absent means it is the same as `buildingId`, which is the normal case.
+     * It differs only during a temporary transfer: the home site keeps the room
+     * empty and keeps charging, because the resident is not asked to pay two
+     * sites for one tenancy inside one organisation.
+     */
+    homeBuildingId: v.optional(v.id('buildings')),
+    /** Room held open at the home site while the resident is away. */
+    heldRoomId: v.optional(v.id('rooms')),
+    /** Set while a temporary transfer is running; cleared on return. */
+    awayUntil: v.optional(v.number()),
     name: v.string(),
     dob: v.optional(v.string()),
     intakeDate: v.string(),
@@ -330,6 +384,7 @@ export default defineSchema({
   })
     .index('by_building', ['buildingId'])
     .index('by_building_status', ['buildingId', 'status'])
+    .index('by_home_building', ['homeBuildingId'])
     .index('by_room', ['roomId']),
 
   /**
