@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 /**
  * Site settings — how this building runs.
@@ -19,6 +20,13 @@ import { Switch } from '@/components/ui/switch'
 const { me, can, denied } = useMe()
 const route = useRoute()
 const buildingId = computed(() => route.params.id as Id<'buildings'>)
+
+/**
+ * One set of rules at a time. Stacked, the three cards ran well past a screen,
+ * so changing a supply cap meant scrolling through meal sittings to reach it —
+ * and each card saves independently, so there is nothing to lose by switching.
+ */
+const tab = ref<'meals' | 'laundry' | 'supplies'>('meals')
 
 const { data: settings } = useConvexQuery(api.settings.get, () => ({
   buildingId: buildingId.value,
@@ -178,7 +186,23 @@ const readOnly = computed(() => !can('site-config'))
     <TsLoadingState v-if="!settings" label="Loading settings…" :rows="4" />
 
     <template v-else>
-      <!-- Meals -->
+      <Tabs v-model="tab" class="w-full">
+        <TabsList>
+          <TabsTrigger value="meals">
+            <DsIcon name="notes" :size="15" />
+            Meals
+          </TabsTrigger>
+          <TabsTrigger value="laundry">
+            <DsIcon name="refresh" :size="15" />
+            Laundry
+          </TabsTrigger>
+          <TabsTrigger value="supplies">
+            <DsIcon name="shield-check" :size="15" />
+            Supplies
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="meals" class="mt-5">
       <Card>
         <CardContent class="flex flex-col gap-4 p-5">
           <div class="flex items-center gap-3">
@@ -241,8 +265,9 @@ const readOnly = computed(() => !can('site-config'))
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
-      <!-- Laundry -->
+        <TabsContent value="laundry" class="mt-5">
       <Card>
         <CardContent class="flex flex-col gap-4 p-5">
           <div class="flex items-center gap-3">
@@ -301,8 +326,9 @@ const readOnly = computed(() => !can('site-config'))
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
-      <!-- Supplies -->
+        <TabsContent value="supplies" class="mt-5">
       <Card>
         <CardContent class="flex flex-col gap-4 p-5">
           <div class="flex items-center gap-3">
@@ -348,6 +374,8 @@ const readOnly = computed(() => !can('site-config'))
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
     </template>
   </div>
 </template>
