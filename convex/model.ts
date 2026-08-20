@@ -108,16 +108,16 @@ export type Capability =
 export type Role =
   | 'admin'
   | 'building-manager'
-  | 'supervisor'
+  | 'coordinator'
   | 'rsw'
   | 'wellness'
   | 'home-support'
 
-/** Strictly nested: admin ⊃ building-manager ⊃ supervisor ⊃ the care roles. */
+/** Strictly nested: admin ⊃ building-manager ⊃ coordinator ⊃ the care roles. */
 export const CAPABILITIES: Record<Role, Capability[]> = {
   admin: ['config', 'building-config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
   'building-manager': ['building-config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
-  supervisor: ['site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
+  coordinator: ['site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
   // The three care roles carry the same authority and differ in the duties
   // they are asked to complete on shift — see `DUTIES` below.
   rsw: ['care', 'checks', 'wellness'],
@@ -128,7 +128,7 @@ export const CAPABILITIES: Record<Role, Capability[]> = {
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Administrator',
   'building-manager': 'Building Manager',
-  supervisor: 'Building Supervisor',
+  coordinator: 'Coordinator',
   rsw: 'Resident Support Worker',
   wellness: 'Wellness Worker',
   'home-support': 'Home Support Worker',

@@ -76,23 +76,31 @@ const switcherLabel = computed(() => {
   return 'Loading…'
 })
 
-const NAV = computed(() => [
-  ...(isFrontline.value
-    ? []
-    : [{ to: '/', icon: 'layout-dashboard', label: 'Home' }]),
-  { to: '/care', icon: 'clipboard-check', label: 'Care Console', exact: true },
-  { to: '/care/reports', icon: 'file-text', label: 'Shift Reports' },
-  { to: '/services', icon: 'notes', label: 'Services' },
-  { to: '/visitors', icon: 'user-plus', label: 'Visitors' },
-  { to: '/tenants', icon: 'users', label: 'Tenants', badge: overview.value?.counts.tenants },
-  { to: '/rents', icon: 'dollar-sign', label: 'Rents', badge: overview.value?.counts.rentWarnings || undefined },
-  { to: '/checks', icon: 'shield-check', label: 'Room Checks' },
-  { to: '/deposits', icon: 'lock', label: 'Security Deposits' },
-  { to: '/support', icon: 'traffic-cone', label: 'Support Levels' },
-  { to: '/critical', icon: 'heart-pulse', label: 'Critical Needs', badge: overview.value?.counts.criticalNeeds || undefined },
-  { to: '/maintenance', icon: 'wrench', label: 'Maintenance' },
-  { to: '/reports', icon: 'clipboard-list', label: 'Reports' },
-])
+const NAV = computed(() =>
+  areasFor(isFrontline.value).map((area) => ({
+    ...area,
+    badge: area.badge ? overview.value?.counts[area.badge] || undefined : undefined,
+  })),
+)
+
+/**
+ * Keep the person inside their own app.
+ *
+ * The same list that builds the sidebar decides this, so a screen cannot be
+ * hidden from the nav yet still reachable by typing the path. It watches the
+ * role as well as the route because an administrator can change role without
+ * navigating — and then the screen they are standing on may no longer be one
+ * they use.
+ */
+watch(
+  () => [route.path, isFrontline.value, me.value !== undefined] as const,
+  ([path, frontline, ready]) => {
+    if (!ready) return // don't bounce anyone before we know who they are
+    if (isAreaAllowed(path, frontline)) return
+    navigateTo(homeFor(frontline), { replace: true })
+  },
+  { immediate: true },
+)
 
 // Configuration is split the way the capabilities are. A Building Manager runs
 // the fabric of their own sites, so Buildings is theirs; the staff directory is
@@ -154,10 +162,10 @@ function submitSearch(value: string) {
   <SidebarProvider>
     <Sidebar collapsible="icon">
       <SidebarHeader class="gap-2.5 p-3">
-        <NuxtLink to="/" class="flex items-center px-1 pt-1 group-data-[collapsible=icon]:hidden">
+        <NuxtLink :to="homeFor(isFrontline)" class="flex items-center px-1 pt-1 group-data-[collapsible=icon]:hidden">
           <img src="/logo-wordmark-dark.svg" alt="TS Database" height="28" class="h-7 w-auto" >
         </NuxtLink>
-        <NuxtLink to="/" class="hidden justify-center group-data-[collapsible=icon]:flex">
+        <NuxtLink :to="homeFor(isFrontline)" class="hidden justify-center group-data-[collapsible=icon]:flex">
           <img src="/logo-mark.svg" alt="TS Database" class="size-7" >
         </NuxtLink>
 

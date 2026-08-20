@@ -55,7 +55,7 @@ export function useRequireAdmin() {
 /**
  * The same guard, for a screen gated on a capability rather than on being an
  * administrator — the Buildings screens, which a Building Manager reaches and
- * a supervisor does not.
+ * a coordinator does not.
  */
 export function useRequireCapability(capability: Capability) {
   const { data: me } = useConvexQuery(api.users.me)

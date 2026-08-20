@@ -79,8 +79,8 @@ async function setup() {
         name: 'Mo', username: 'mo', role: 'building-manager',
         assignedBuildingIds: [buildingA],
       }),
-      supervisorAB: await ctx.db.insert('users', {
-        name: 'Sam', username: 'sam', role: 'supervisor',
+      coordinatorAB: await ctx.db.insert('users', {
+        name: 'Sam', username: 'sam', role: 'coordinator',
         assignedBuildingIds: [buildingA, buildingB],
       }),
       workerA: await ctx.db.insert('users', {
@@ -137,7 +137,7 @@ describe('building scoping', () => {
     ).rejects.toThrow(REFUSED)
   })
 
-  test('a supervisor cannot post a payment against another building’s resident', async () => {
+  test('a coordinator cannot post a payment against another building’s resident', async () => {
     const { as, users, tenantB } = await setup()
     const { as: as2, users: users2, tenantB: tenantB2 } = { as, users, tenantB }
     await expect(
@@ -183,7 +183,7 @@ describe('building scoping', () => {
     const { as, users } = await setup()
 
     expect(await as(users.workerA).query(api.buildings.list, {})).toHaveLength(1)
-    expect(await as(users.supervisorAB).query(api.buildings.list, {})).toHaveLength(2)
+    expect(await as(users.coordinatorAB).query(api.buildings.list, {})).toHaveLength(2)
     expect(await as(users.admin).query(api.buildings.list, {})).toHaveLength(2)
     expect(await as(users.unassigned).query(api.buildings.list, {})).toHaveLength(0)
   })
@@ -234,7 +234,7 @@ describe('building scoping', () => {
     })
     await as(users.admin).mutation(api.buildings.remove, { buildingId: buildingB })
 
-    const sam = await t.run((ctx) => ctx.db.get(users.supervisorAB))
+    const sam = await t.run((ctx) => ctx.db.get(users.coordinatorAB))
     expect(sam?.assignedBuildingIds).not.toContain(buildingB)
     expect(sam?.assignedBuildingIds).toHaveLength(1)
   })

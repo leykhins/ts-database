@@ -52,7 +52,7 @@ const created = ref<{ name: string; username: string; password: string } | null>
 
 /**
  * Suggest `first.last` from the employee's name, so a whole team ends up with
- * usernames in one shape rather than each supervisor inventing a convention.
+ * usernames in one shape rather than each manager inventing a convention.
  * Only fills a field the administrator has not typed into.
  */
 const usernameTouched = ref(false)

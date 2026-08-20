@@ -33,7 +33,7 @@ export const supportLevel = v.union(
 export const staffRole = v.union(
   v.literal('admin'),
   v.literal('building-manager'),
-  v.literal('supervisor'),
+  v.literal('coordinator'),
   v.literal('rsw'), // Resident Support Worker
   v.literal('wellness'), // Wellness Worker (mental-health support)
   v.literal('home-support'), // Home Support Worker (personal care)

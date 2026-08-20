@@ -14,7 +14,7 @@ import { Switch } from '@/components/ui/switch'
  *
  * Meal sittings, laundry hours and supply limits are the three things every
  * site does differently, so they belong to a site manager rather than to an
- * administrator: `site-config`, which supervisors hold too.
+ * administrator: `site-config`, which coordinators hold too.
  */
 const { me, can, denied } = useMe()
 const route = useRoute()
