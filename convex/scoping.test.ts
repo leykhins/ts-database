@@ -262,6 +262,57 @@ describe('building scoping', () => {
       }),
     ).rejects.toThrow(/cannot do this/)
   })
+
+  test('a worker cannot log or read another building’s rounds', async () => {
+    const { as, users, buildingB } = await setup()
+    const now = Date.now()
+
+    await expect(
+      as(users.workerA).query(api.routines.board, { buildingId: buildingB, now }),
+    ).rejects.toThrow(REFUSED)
+    await expect(
+      as(users.workerA).query(api.routines.history, {
+        buildingId: buildingB,
+        since: now - 86_400_000,
+      }),
+    ).rejects.toThrow(REFUSED)
+    await expect(
+      as(users.workerA).mutation(api.routines.complete, {
+        buildingId: buildingB,
+        routine: 'rounds',
+      }),
+    ).rejects.toThrow(REFUSED)
+  })
+
+  test('a coordinator cannot set another building’s round frequencies', async () => {
+    const { as, users, buildingB } = await setup()
+    await expect(
+      as(users.managerA).mutation(api.routines.setRoutines, {
+        buildingId: buildingB,
+        routines: [{ routine: 'rounds', everyMinutes: 30, enabled: true }],
+      }),
+    ).rejects.toThrow(REFUSED)
+  })
+
+  /*
+     The bell is the widest read in the app — rounds, needs, work orders, rent,
+     guests, pets, all in one query. If scoping were going to be forgotten
+     anywhere it would be here, so it is checked directly rather than trusted
+     to the sources it calls.
+  */
+  test('a worker cannot read another building’s notifications', async () => {
+    const { as, users, buildingA, buildingB } = await setup()
+
+    const own = await as(users.workerA).query(api.notifications.feed, { now: Date.now() })
+    expect(own?.building._id).toBe(buildingA)
+
+    await expect(
+      as(users.workerA).query(api.notifications.feed, {
+        buildingId: buildingB,
+        now: Date.now(),
+      }),
+    ).rejects.toThrow(REFUSED)
+  })
 })
 
 /**
@@ -284,6 +335,8 @@ describe('coverage', () => {
     'checks:completeRoomCheck',
     'rooms:create',
     'users:setAssignedBuildings',
+    'routines:board', 'routines:history', 'routines:complete', 'routines:setRoutines',
+    'notifications:feed',
   ])
 
   /**
@@ -301,6 +354,7 @@ describe('coverage', () => {
     ['users:needsBootstrap', 'a boolean about the deployment, no personal data'],
     ['users:setSimulatedRole', 'acts on the caller, and is admin-only'],
     ['users:changeMyPassword', 'acts on the caller'],
+    ['notifications:markRead', 'writes the caller’s own read markers; a key names no building'],
     // Administrator-only: the staff directory is not building-scoped.
     ['users:list', 'admin-only staff directory'],
     ['users:createStaff', 'admin-only'],

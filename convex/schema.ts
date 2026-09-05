@@ -168,6 +168,20 @@ export const wheeledKind = v.union(
   v.literal('other'),
 )
 
+/**
+ * The rounds a shift repeats on the clock.
+ *
+ * Not a free-text label: the whole point is that the same round is comparable
+ * across sites and across months, so "did the perimeter get walked last night"
+ * is answerable without reading anyone's prose. Sites set *how often*, never
+ * what counts.
+ */
+export const routineKey = v.union(
+  v.literal('rounds'),
+  v.literal('perimeter'),
+  v.literal('meds'),
+)
+
 export const tenancyStatus = v.union(
   v.literal('current'),
   v.literal('prospective'),
@@ -627,7 +641,57 @@ export default defineSchema({
 
     /** Item → how many a resident may be given in one day. 0 = no cap. */
     supplyLimits: v.optional(v.record(v.string(), v.number())),
+
+    /**
+     * How often each round comes due here. A tower with an elevator and a
+     * back alley walks the perimeter more often than a twelve-unit house;
+     * one hard-coded hour would be wrong at both.
+     */
+    routines: v.optional(
+      v.array(
+        v.object({
+          routine: routineKey,
+          everyMinutes: v.number(),
+          /** Off means this site does not do that round at all. */
+          enabled: v.boolean(),
+        }),
+      ),
+    ),
   }).index('by_building', ['buildingId']),
+
+  /**
+   * One row each time a round is walked.
+   *
+   * Completions, not schedules — nothing writes a row saying a round is *due*.
+   * "Due" is the interval measured from the last completion, computed at read
+   * time, so a site that changes its frequency at noon is on the new one at
+   * 12:01 and no queue of stale expectations has to be cleaned up.
+   */
+  routineCompletions: defineTable({
+    buildingId: v.id('buildings'),
+    routine: routineKey,
+    completedAt: v.number(),
+    completedBy: v.optional(v.id('users')),
+    /** How late it was, kept as recorded — recomputing it later would lie. */
+    minutesLate: v.optional(v.number()),
+    note: v.optional(v.string()),
+  })
+    .index('by_building_routine', ['buildingId', 'routine', 'completedAt'])
+    .index('by_building_completed', ['buildingId', 'completedAt']),
+
+  /**
+   * Which notifications a person has already seen.
+   *
+   * The feed itself is computed from the things it is about — an overdue round,
+   * an unresolved need — so there is no notification row to mark read. What is
+   * stored is the far smaller fact of having looked, keyed by a string the feed
+   * derives the same way every time.
+   */
+  notificationReads: defineTable({
+    userId: v.id('users'),
+    key: v.string(),
+    readAt: v.number(),
+  }).index('by_user_key', ['userId', 'key']),
 
   /** The food checklist: one row per resident per sitting per day. */
   mealServices: defineTable({

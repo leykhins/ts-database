@@ -281,6 +281,64 @@ the administrator has none, the simulated app is empty. That is deliberate: a
 simulation that kept full reach would misrepresent the single most important
 thing about the role being tested.
 
+### Which site you are working
+
+Anyone assigned to more than one building is asked, once a shift, which site
+they are at. Relief and casual staff are the reason: the selection is remembered
+in `localStorage`, so a worker at Dodson on Monday and Carrall on Tuesday starts
+Tuesday pointed at Monday's building — and nothing about that looks wrong. The
+roster loads, the checks save, and the site they are standing in shows those
+checks as never done. The server cannot catch it either, because they are
+assigned to both and there is nothing to refuse.
+
+The window is **12 hours from the answer**, not a calendar day. Shifts run 12–8,
+8–4 and 4–12, so a day boundary would ask an overnight worker at 11:45 pm and
+again five minutes later. A window measured from the answer has no boundary to
+land on, covers a whole shift with slack, and is always expired by the next
+day's work.
+
+Switching site from the sidebar counts as an answer and resets the window. The
+automatic fallback in `reconcile` — which picks a building when the remembered
+one has been deleted or unassigned — deliberately does not: a choice the app
+made on someone's behalf is exactly the one a person should look at.
+
+Staff with a single building never see it; there is nothing to choose.
+
+### Test accounts
+
+Six accounts, one per role, for looking at the app as each of them. Create them
+once per deployment with a password you choose:
+
+```bash
+npx convex run users:seedTestAccounts '{"password":"…"}'
+```
+
+Then put the same password in `.env.local` (gitignored) so the sign-in screen
+can fill the form for you:
+
+```
+NUXT_PUBLIC_DEV_PASSWORD=…
+```
+
+A **Fill a test account** picker appears under the sign-in form, listing
+`test.admin`, `test.manager`, `test.coordinator`, `test.rsw`, `test.wellness`
+and `test.support`. It fills the two fields and stops — signing in stays a
+deliberate click.
+
+The picker is `app/dev/AccountPicker.vue`, deliberately outside
+`app/components/` so nothing auto-registers it. It is reached only through a
+dynamic import behind `import.meta.dev`, and the password is a compile-time
+constant that `nuxt.config.ts` hard-codes to `""` under `$production`. Both
+facts are checkable rather than promised:
+
+```bash
+npm run build && grep -r "test.admin\|Fill a test account" .output/   # no matches
+```
+
+The command is idempotent — run it again after `seed:wipeAll`, or after seeding
+new buildings, and it resets the passwords and re-assigns every account to every
+building rather than failing on the ones that exist.
+
 ### UI — `app/`
 
 ```

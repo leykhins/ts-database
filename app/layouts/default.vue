@@ -32,7 +32,7 @@ import {
  */
 const route = useRoute()
 const { signOut } = useConvexAuth()
-const { selected, select, reconcile } = useSelectedBuilding()
+const { selected, select, reconcile, confirm, isConfirmed, recent } = useSelectedBuilding()
 const header = usePageHeader()
 
 const { me, isFrontline, can } = useMe()
@@ -137,8 +137,33 @@ onMounted(() => {
   onScopeDispose(() => window.removeEventListener('scroll', onScroll))
 })
 
+// Switching from the sidebar is a deliberate answer to the same question the
+// picker asks, so it confirms too — otherwise someone who moved site at 9am
+// would be asked again at 9:01.
 function pickBuilding(id: Id<'buildings'>) {
-  select(id)
+  confirm(id)
+}
+
+/**
+ * Ask which site this shift is at, once per shift, of anyone who covers more
+ * than one.
+ *
+ * Gated on the list actually having two entries: with one building there is
+ * nothing to choose and the dialog would be ceremony. It waits for `me` as well
+ * as the list so it cannot flash up during sign-in, and `isConfirmed` is
+ * re-read against a ticking clock so a tab left open overnight asks again in
+ * the morning rather than on the next navigation.
+ */
+const now = useNow()
+const askForSite = computed(
+  () =>
+    !!me.value
+    && (buildings.value?.length ?? 0) > 1
+    && !isConfirmed(now.value),
+)
+
+function confirmSite(id: Id<'buildings'>) {
+  confirm(id)
 }
 
 const { mutate: setSimulatedRole } = useConvexMutation(api.users.setSimulatedRole)
@@ -323,9 +348,7 @@ function submitSearch(value: string) {
           class="hidden sm:flex"
           @submit="submitSearch"
         />
-        <Button variant="secondary" size="icon" aria-label="Work queue" @click="navigateTo('/')">
-          <DsIcon name="bell" :size="18" />
-        </Button>
+        <TsNotificationBell />
       </header>
 
       <div
@@ -354,5 +377,13 @@ function submitSearch(value: string) {
     </SidebarInset>
 
     <TsPasswordDialog :open="passwordOpen" @close="passwordOpen = false" />
+
+    <TsSitePicker
+      :open="askForSite"
+      :buildings="buildings ?? []"
+      :previous="selected"
+      :recent="recent"
+      @pick="confirmSite"
+    />
   </SidebarProvider>
 </template>
