@@ -10,21 +10,31 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 /**
- * Fill the sign-in form with a test account. Development only.
+ * Fill the sign-in form with a demo account.
  *
- * This file lives outside `app/components` on purpose. Anything in that
+ * Present wherever `NUXT_PUBLIC_DEMO_PASSWORD` is set at build time, which now
+ * includes the public deployment — a deliberate choice, made knowing what it
+ * means: these are open credentials on a URL with no SSO and no password, so
+ * anyone who finds the link can sign in as an administrator and change or
+ * delete anything in it. That is acceptable only because the data is fictional
+ * seed fixtures. It must never be true of a deployment holding real residents.
+ *
+ * (The directory is still called `dev` for a rename that got blocked, not
+ * because this is development-only. It is not.)
+ *
+ * The file lives outside `app/components` on purpose. Anything in that
  * directory is auto-registered and can be pulled into the graph by the
  * component resolver; this one enters only through the dynamic import in
- * `login.vue`, which sits behind `import.meta.dev`. In a production build that
- * constant folds to `false`, nothing references the import, and Rollup drops
- * the whole chunk — the markup, the usernames and the password with it. That is
- * a claim worth checking rather than trusting: build, then grep `.output` for
+ * `login.vue`. Where the password constant is empty, that guard folds to
+ * `false` at build time, nothing references the import, and Rollup drops the
+ * whole chunk — markup, usernames and password together. A claim worth checking
+ * rather than trusting: build without the variable, then grep `.output` for
  * `test.admin`.
  *
- * `__DEV_PASSWORD__` is a compile-time constant defined in `nuxt.config.ts`,
- * fed by `NUXT_PUBLIC_DEV_PASSWORD` in development and hard-coded to `""` in
- * production. No working credential is committed even in a file that is meant
- * to be dev only. The accounts themselves exist nowhere until somebody runs:
+ * `__DEMO_PASSWORD__` is a compile-time constant from `nuxt.config.ts`. It is
+ * an environment variable rather than a literal so the credential is not
+ * committed, and so each environment decides for itself whether these accounts
+ * exist there at all. The accounts are created separately:
  *
  *     npx convex run users:seedTestAccounts '{"password":"…"}'
  *
@@ -42,8 +52,8 @@ const ACCOUNTS = [
 
 const emit = defineEmits<{ fill: [{ username: string; password: string }] }>()
 
-declare const __DEV_PASSWORD__: string
-const password = __DEV_PASSWORD__
+declare const __DEMO_PASSWORD__: string
+const password = __DEMO_PASSWORD__
 
 function pick(account: (typeof ACCOUNTS)[number]) {
   emit('fill', { username: account.username, password })

@@ -304,20 +304,24 @@ made on someone's behalf is exactly the one a person should look at.
 
 Staff with a single building never see it; there is nothing to choose.
 
-### Test accounts
+### Demo accounts
 
-Six accounts, one per role, for looking at the app as each of them. Create them
-once per deployment with a password you choose:
+Six accounts, one per role, for looking at the app as each of them. Two
+independent steps — the accounts, then the picker.
+
+Create the accounts on a deployment with a password you choose. Idempotent: run
+it again after `seed:wipeAll`, or after seeding new buildings, and it resets the
+passwords and re-assigns every account to every building rather than failing on
+the ones that exist.
 
 ```bash
 npx convex run users:seedTestAccounts '{"password":"…"}'
 ```
 
-Then put the same password in `.env.local` (gitignored) so the sign-in screen
-can fill the form for you:
+Then set the same password for whichever environment should offer them:
 
 ```
-NUXT_PUBLIC_DEV_PASSWORD=…
+NUXT_PUBLIC_DEMO_PASSWORD=…
 ```
 
 A **Fill a test account** picker appears under the sign-in form, listing
@@ -325,19 +329,23 @@ A **Fill a test account** picker appears under the sign-in form, listing
 and `test.support`. It fills the two fields and stops — signing in stays a
 deliberate click.
 
-The picker is `app/dev/AccountPicker.vue`, deliberately outside
-`app/components/` so nothing auto-registers it. It is reached only through a
-dynamic import behind `import.meta.dev`, and the password is a compile-time
-constant that `nuxt.config.ts` hard-codes to `""` under `$production`. Both
-facts are checkable rather than promised:
+> **This is an open door, on purpose.** The password is inlined into the client
+> bundle, so any environment with it set has administrator credentials anyone
+> holding the URL can use. `ts-db.leykhins.dev` is public, unprotected and has
+> it set: treat everything in it as world-writable. That is a considered
+> trade for a feedback deployment full of fictional fixtures, and it must not
+> survive contact with real resident records.
+
+Where the variable is unset, the picker is *absent* rather than hidden — the
+guard folds to `false` at build time and Rollup drops the chunk, markup and
+usernames and password together. It is not gated on `import.meta.dev`: that is
+true only for the local dev server, which would keep the picker off every
+deployment including the ones where roles need testing. Both directions are
+checkable rather than promised:
 
 ```bash
-npm run build && grep -r "test.admin\|Fill a test account" .output/   # no matches
+npm run build && grep -r "test.admin" .output/
 ```
-
-The command is idempotent — run it again after `seed:wipeAll`, or after seeding
-new buildings, and it resets the passwords and re-assigns every account to every
-building rather than failing on the ones that exist.
 
 ### UI — `app/`
 

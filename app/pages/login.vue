@@ -32,15 +32,23 @@ watchEffect(() => {
 })
 
 /**
- * The test-account picker, development only.
+ * The demo-account picker.
  *
- * `import.meta.dev` is a compile-time constant. In a production build this is
- * `false`, nothing references the import, and Rollup drops the component's
- * whole chunk — markup, usernames and password together. A `v-if` on a runtime
- * flag would not do that: the markup would ship and only the rendering would be
- * skipped. That is why this is a dynamic import rather than a plain component.
+ * Gated on the password constant rather than on `import.meta.dev`, because that
+ * is true only for the local dev server — it kept the picker off every
+ * deployment, including the ones where the roles need testing. An environment
+ * that sets the variable gets the picker; one that does not never ships it.
+ *
+ * `__DEMO_PASSWORD__` is replaced at build time, so where it is empty this
+ * folds to `null`, nothing references the import, and Rollup drops the
+ * component's whole chunk — markup, usernames and password together. A `v-if`
+ * on a runtime flag would not do that: the markup would ship and only the
+ * rendering would be skipped. Hence a dynamic import rather than a plain
+ * component.
  */
-const AccountPicker = import.meta.dev
+declare const __DEMO_PASSWORD__: string
+
+const AccountPicker = __DEMO_PASSWORD__
   ? defineAsyncComponent(() => import('~/dev/AccountPicker.vue'))
   : null
 
@@ -48,9 +56,7 @@ function fillTestAccount(account: { username: string; password: string }) {
   mode.value = 'signIn'
   username.value = account.username
   password.value = account.password
-  error.value = account.password
-    ? ''
-    : 'No dev password is set. Put NUXT_PUBLIC_DEV_PASSWORD in .env.local, then create the accounts: npx convex run users:seedTestAccounts \'{"password":"…"}\''
+  error.value = ''
 }
 
 async function submit() {

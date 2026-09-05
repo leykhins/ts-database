@@ -23,6 +23,30 @@ export default defineNuxtConfig({
 
   vite: {
     plugins: [tailwindcss()],
+
+    /*
+       The password the demo sign-in picker fills (see app/dev/AccountPicker.vue).
+
+       One define for every environment, deliberately. It used to be hard-coded
+       to `""` under `$production` so the credential could not reach a public
+       build — but `import.meta.dev` is true only for the local dev server, so
+       that also kept the picker off the preview *and* production deployments,
+       which is where the roles actually need testing. Presence now follows the
+       variable: set it for an environment and the picker is there, leave it
+       unset and the guard in `login.vue` folds to `false` at build time and
+       Rollup drops the chunk entirely.
+
+       The consequence is real and intended: an environment with this set has
+       open administrator credentials. Set it only where that is acceptable —
+       here, deployments holding fictional seed data.
+
+       Not `runtimeConfig.public`, which serializes every key into the built app
+       whether or not anything reads it. A define participates in dead-code
+       elimination; a runtime config key cannot.
+    */
+    define: {
+      __DEMO_PASSWORD__: JSON.stringify(process.env.NUXT_PUBLIC_DEMO_PASSWORD || ''),
+    },
   },
 
   shadcn: {
@@ -66,26 +90,4 @@ export default defineNuxtConfig({
     },
   },
 
-  /*
-     The password the dev sign-in picker fills (see app/dev/AccountPicker.vue).
-
-     Not `runtimeConfig.public`: every key there is serialized into the built
-     app and served to the browser, so a production build that happened to have
-     the variable set would publish it. A `define` split across $development and
-     $production cannot do that — in a production build the literal is `""`
-     before any bundling happens, whatever the environment says.
-  */
-  $development: {
-    vite: {
-      define: {
-        __DEV_PASSWORD__: JSON.stringify(process.env.NUXT_PUBLIC_DEV_PASSWORD || ''),
-      },
-    },
-  },
-
-  $production: {
-    vite: {
-      define: { __DEV_PASSWORD__: '""' },
-    },
-  },
 })
