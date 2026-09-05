@@ -11,12 +11,9 @@ import { Separator } from '@/components/ui/separator'
  * All Clear banner → room grid + priority queue → KPIs → area launcher.
  */
 const { selected } = useSelectedBuilding()
-const { isFrontline } = useMe()
 
-// A frontline worker's home is the shift, not the building's books.
-watchEffect(() => {
-  if (isFrontline.value) navigateTo('/care', { replace: true })
-})
+// A frontline worker's home is the shift, not the building's books — the
+// layout's area guard sends them to /care, so there is nothing to do here.
 
 const { data: overview, isLoading } = useConvexQuery(api.dashboard.overview, () => ({
   ...(selected.value ? { buildingId: selected.value } : {}),

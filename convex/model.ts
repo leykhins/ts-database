@@ -108,16 +108,16 @@ export type Capability =
 export type Role =
   | 'admin'
   | 'building-manager'
-  | 'supervisor'
+  | 'coordinator'
   | 'rsw'
   | 'wellness'
   | 'home-support'
 
-/** Strictly nested: admin ⊃ building-manager ⊃ supervisor ⊃ the care roles. */
+/** Strictly nested: admin ⊃ building-manager ⊃ coordinator ⊃ the care roles. */
 export const CAPABILITIES: Record<Role, Capability[]> = {
   admin: ['config', 'building-config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
   'building-manager': ['building-config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
-  supervisor: ['site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
+  coordinator: ['site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
   // The three care roles carry the same authority and differ in the duties
   // they are asked to complete on shift — see `DUTIES` below.
   rsw: ['care', 'checks', 'wellness'],
@@ -128,7 +128,7 @@ export const CAPABILITIES: Record<Role, Capability[]> = {
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Administrator',
   'building-manager': 'Building Manager',
-  supervisor: 'Building Supervisor',
+  coordinator: 'Coordinator',
   rsw: 'Resident Support Worker',
   wellness: 'Wellness Worker',
   'home-support': 'Home Support Worker',
@@ -533,6 +533,47 @@ export function assertBuildingAccess(user: Doc<'users'>, buildingId: Id<'buildin
  *     const tenant = scoped(staff, await ctx.db.get(args.tenantId),
  *                           'That resident no longer exists.')
  */
+/**
+ * Close the resident's open placement and open a new one.
+ *
+ * Every move goes through here so the history cannot be written two ways, and
+ * so nothing ever silently overwrites where somebody was.
+ */
+export async function recordPlacement(
+  ctx: MutationCtx,
+  tenant: Doc<'tenants'>,
+  next: {
+    buildingId: Id<'buildings'>
+    roomId?: Id<'rooms'>
+    kind: Doc<'placements'>['kind']
+    reason?: string
+    expectedReturn?: number
+    recordedBy?: Id<'users'>
+  },
+): Promise<Id<'placements'>> {
+  const now = Date.now()
+
+  const open = await ctx.db
+    .query('placements')
+    .withIndex('by_tenant', (q) => q.eq('tenantId', tenant._id))
+    .collect()
+  for (const placement of open) {
+    if (placement.endedAt !== undefined) continue
+    await ctx.db.patch(placement._id, { endedAt: now })
+  }
+
+  return await ctx.db.insert('placements', {
+    tenantId: tenant._id,
+    buildingId: next.buildingId,
+    ...(next.roomId ? { roomId: next.roomId } : {}),
+    kind: next.kind,
+    startedAt: now,
+    ...(next.expectedReturn ? { expectedReturn: next.expectedReturn } : {}),
+    ...(next.reason ? { reason: next.reason } : {}),
+    ...(next.recordedBy ? { recordedBy: next.recordedBy } : {}),
+  })
+}
+
 export function scoped<T extends { buildingId: Id<'buildings'> }>(
   user: Doc<'users'>,
   doc: T | null,
@@ -559,8 +600,27 @@ export async function scopedTenant(
 ): Promise<Doc<'tenants'> | null> {
   const tenant = await ctx.db.get(tenantId)
   if (!tenant) return null
-  assertBuildingAccess(user, tenant.buildingId)
+  assertTenantAccess(user, tenant)
   return tenant
+}
+
+/** The site that holds this resident's room and charges their rent. */
+export function billingBuildingId(tenant: Doc<'tenants'>): Id<'buildings'> {
+  return tenant.homeBuildingId ?? tenant.buildingId
+}
+
+/**
+ * A resident belongs to two sites while they are temporarily away: the one
+ * they are living in, and the one holding their room and their rent. Both sets
+ * of staff have a legitimate reason to open the record — the receiving site is
+ * doing their checks, the home site is still billing them and expecting them
+ * back — so access is granted from either.
+ */
+export function assertTenantAccess(user: Doc<'users'>, tenant: Doc<'tenants'>): void {
+  if (hasBuildingAccess(user, tenant.buildingId)) return
+  const home = tenant.homeBuildingId
+  if (home && hasBuildingAccess(user, home)) return
+  throw new Error('You are not assigned to that building. Ask an administrator for access.')
 }
 
 /** The building documents a user may see, for switchers and pickers. */

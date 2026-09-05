@@ -33,7 +33,7 @@ export const supportLevel = v.union(
 export const staffRole = v.union(
   v.literal('admin'),
   v.literal('building-manager'),
-  v.literal('supervisor'),
+  v.literal('coordinator'),
   v.literal('rsw'), // Resident Support Worker
   v.literal('wellness'), // Wellness Worker (mental-health support)
   v.literal('home-support'), // Home Support Worker (personal care)
@@ -168,6 +168,20 @@ export const wheeledKind = v.union(
   v.literal('other'),
 )
 
+/**
+ * The rounds a shift repeats on the clock.
+ *
+ * Not a free-text label: the whole point is that the same round is comparable
+ * across sites and across months, so "did the perimeter get walked last night"
+ * is answerable without reading anyone's prose. Sites set *how often*, never
+ * what counts.
+ */
+export const routineKey = v.union(
+  v.literal('rounds'),
+  v.literal('perimeter'),
+  v.literal('meds'),
+)
+
 export const tenancyStatus = v.union(
   v.literal('current'),
   v.literal('prospective'),
@@ -247,9 +261,63 @@ export default defineSchema({
     .index('by_building_number', ['buildingId', 'number'])
     .index('by_building_sort', ['buildingId', 'sortKey']),
 
-  tenants: defineTable({
+  /**
+   * Where a resident has lived, and why it changed.
+   *
+   * Append-only. `tenants.buildingId`/`roomId` say where someone is *now*;
+   * this says how they got there and where they were before. A resident can be
+   * moved between sites temporarily for evaluation, permanently, or evicted
+   * and later reinstated, and each of those has to survive in the record — a
+   * site is answerable for who it housed and when, long after they leave.
+   */
+  placements: defineTable({
+    tenantId: v.id('tenants'),
     buildingId: v.id('buildings'),
     roomId: v.optional(v.id('rooms')),
+    kind: v.union(
+      v.literal('intake'),
+      v.literal('room-move'),
+      v.literal('transfer-temporary'),
+      v.literal('transfer-permanent'),
+      v.literal('eviction'),
+      v.literal('return'),
+      v.literal('exit'),
+    ),
+    startedAt: v.number(),
+    /** Absent while this is the placement the resident is living in. */
+    endedAt: v.optional(v.number()),
+    /** Temporary transfers only: when the receiving site expects to hand back. */
+    expectedReturn: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    recordedBy: v.optional(v.id('users')),
+  })
+    .index('by_tenant', ['tenantId'])
+    .index('by_tenant_started', ['tenantId', 'startedAt'])
+    .index('by_building', ['buildingId'])
+    .index('by_room', ['roomId']),
+
+  tenants: defineTable({
+    /**
+     * Where this resident physically is. Checks, meals, wellness and the room
+     * grid all follow this, so during a temporary transfer it is the receiving
+     * site — those are the staff who actually see them.
+     */
+    buildingId: v.id('buildings'),
+    roomId: v.optional(v.id('rooms')),
+
+    /**
+     * The site holding their room and their rent.
+     *
+     * Absent means it is the same as `buildingId`, which is the normal case.
+     * It differs only during a temporary transfer: the home site keeps the room
+     * empty and keeps charging, because the resident is not asked to pay two
+     * sites for one tenancy inside one organisation.
+     */
+    homeBuildingId: v.optional(v.id('buildings')),
+    /** Room held open at the home site while the resident is away. */
+    heldRoomId: v.optional(v.id('rooms')),
+    /** Set while a temporary transfer is running; cleared on return. */
+    awayUntil: v.optional(v.number()),
     name: v.string(),
     dob: v.optional(v.string()),
     intakeDate: v.string(),
@@ -330,6 +398,7 @@ export default defineSchema({
   })
     .index('by_building', ['buildingId'])
     .index('by_building_status', ['buildingId', 'status'])
+    .index('by_home_building', ['homeBuildingId'])
     .index('by_room', ['roomId']),
 
   /**
@@ -572,7 +641,57 @@ export default defineSchema({
 
     /** Item → how many a resident may be given in one day. 0 = no cap. */
     supplyLimits: v.optional(v.record(v.string(), v.number())),
+
+    /**
+     * How often each round comes due here. A tower with an elevator and a
+     * back alley walks the perimeter more often than a twelve-unit house;
+     * one hard-coded hour would be wrong at both.
+     */
+    routines: v.optional(
+      v.array(
+        v.object({
+          routine: routineKey,
+          everyMinutes: v.number(),
+          /** Off means this site does not do that round at all. */
+          enabled: v.boolean(),
+        }),
+      ),
+    ),
   }).index('by_building', ['buildingId']),
+
+  /**
+   * One row each time a round is walked.
+   *
+   * Completions, not schedules — nothing writes a row saying a round is *due*.
+   * "Due" is the interval measured from the last completion, computed at read
+   * time, so a site that changes its frequency at noon is on the new one at
+   * 12:01 and no queue of stale expectations has to be cleaned up.
+   */
+  routineCompletions: defineTable({
+    buildingId: v.id('buildings'),
+    routine: routineKey,
+    completedAt: v.number(),
+    completedBy: v.optional(v.id('users')),
+    /** How late it was, kept as recorded — recomputing it later would lie. */
+    minutesLate: v.optional(v.number()),
+    note: v.optional(v.string()),
+  })
+    .index('by_building_routine', ['buildingId', 'routine', 'completedAt'])
+    .index('by_building_completed', ['buildingId', 'completedAt']),
+
+  /**
+   * Which notifications a person has already seen.
+   *
+   * The feed itself is computed from the things it is about — an overdue round,
+   * an unresolved need — so there is no notification row to mark read. What is
+   * stored is the far smaller fact of having looked, keyed by a string the feed
+   * derives the same way every time.
+   */
+  notificationReads: defineTable({
+    userId: v.id('users'),
+    key: v.string(),
+    readAt: v.number(),
+  }).index('by_user_key', ['userId', 'key']),
 
   /** The food checklist: one row per resident per sitting per day. */
   mealServices: defineTable({

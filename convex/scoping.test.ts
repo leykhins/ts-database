@@ -79,8 +79,8 @@ async function setup() {
         name: 'Mo', username: 'mo', role: 'building-manager',
         assignedBuildingIds: [buildingA],
       }),
-      supervisorAB: await ctx.db.insert('users', {
-        name: 'Sam', username: 'sam', role: 'supervisor',
+      coordinatorAB: await ctx.db.insert('users', {
+        name: 'Sam', username: 'sam', role: 'coordinator',
         assignedBuildingIds: [buildingA, buildingB],
       }),
       workerA: await ctx.db.insert('users', {
@@ -137,7 +137,7 @@ describe('building scoping', () => {
     ).rejects.toThrow(REFUSED)
   })
 
-  test('a supervisor cannot post a payment against another building’s resident', async () => {
+  test('a coordinator cannot post a payment against another building’s resident', async () => {
     const { as, users, tenantB } = await setup()
     const { as: as2, users: users2, tenantB: tenantB2 } = { as, users, tenantB }
     await expect(
@@ -183,7 +183,7 @@ describe('building scoping', () => {
     const { as, users } = await setup()
 
     expect(await as(users.workerA).query(api.buildings.list, {})).toHaveLength(1)
-    expect(await as(users.supervisorAB).query(api.buildings.list, {})).toHaveLength(2)
+    expect(await as(users.coordinatorAB).query(api.buildings.list, {})).toHaveLength(2)
     expect(await as(users.admin).query(api.buildings.list, {})).toHaveLength(2)
     expect(await as(users.unassigned).query(api.buildings.list, {})).toHaveLength(0)
   })
@@ -234,7 +234,7 @@ describe('building scoping', () => {
     })
     await as(users.admin).mutation(api.buildings.remove, { buildingId: buildingB })
 
-    const sam = await t.run((ctx) => ctx.db.get(users.supervisorAB))
+    const sam = await t.run((ctx) => ctx.db.get(users.coordinatorAB))
     expect(sam?.assignedBuildingIds).not.toContain(buildingB)
     expect(sam?.assignedBuildingIds).toHaveLength(1)
   })
@@ -262,6 +262,57 @@ describe('building scoping', () => {
       }),
     ).rejects.toThrow(/cannot do this/)
   })
+
+  test('a worker cannot log or read another building’s rounds', async () => {
+    const { as, users, buildingB } = await setup()
+    const now = Date.now()
+
+    await expect(
+      as(users.workerA).query(api.routines.board, { buildingId: buildingB, now }),
+    ).rejects.toThrow(REFUSED)
+    await expect(
+      as(users.workerA).query(api.routines.history, {
+        buildingId: buildingB,
+        since: now - 86_400_000,
+      }),
+    ).rejects.toThrow(REFUSED)
+    await expect(
+      as(users.workerA).mutation(api.routines.complete, {
+        buildingId: buildingB,
+        routine: 'rounds',
+      }),
+    ).rejects.toThrow(REFUSED)
+  })
+
+  test('a coordinator cannot set another building’s round frequencies', async () => {
+    const { as, users, buildingB } = await setup()
+    await expect(
+      as(users.managerA).mutation(api.routines.setRoutines, {
+        buildingId: buildingB,
+        routines: [{ routine: 'rounds', everyMinutes: 30, enabled: true }],
+      }),
+    ).rejects.toThrow(REFUSED)
+  })
+
+  /*
+     The bell is the widest read in the app — rounds, needs, work orders, rent,
+     guests, pets, all in one query. If scoping were going to be forgotten
+     anywhere it would be here, so it is checked directly rather than trusted
+     to the sources it calls.
+  */
+  test('a worker cannot read another building’s notifications', async () => {
+    const { as, users, buildingA, buildingB } = await setup()
+
+    const own = await as(users.workerA).query(api.notifications.feed, { now: Date.now() })
+    expect(own?.building._id).toBe(buildingA)
+
+    await expect(
+      as(users.workerA).query(api.notifications.feed, {
+        buildingId: buildingB,
+        now: Date.now(),
+      }),
+    ).rejects.toThrow(REFUSED)
+  })
 })
 
 /**
@@ -284,6 +335,8 @@ describe('coverage', () => {
     'checks:completeRoomCheck',
     'rooms:create',
     'users:setAssignedBuildings',
+    'routines:board', 'routines:history', 'routines:complete', 'routines:setRoutines',
+    'notifications:feed',
   ])
 
   /**
@@ -301,6 +354,7 @@ describe('coverage', () => {
     ['users:needsBootstrap', 'a boolean about the deployment, no personal data'],
     ['users:setSimulatedRole', 'acts on the caller, and is admin-only'],
     ['users:changeMyPassword', 'acts on the caller'],
+    ['notifications:markRead', 'writes the caller’s own read markers; a key names no building'],
     // Administrator-only: the staff directory is not building-scoped.
     ['users:list', 'admin-only staff directory'],
     ['users:createStaff', 'admin-only'],
@@ -357,6 +411,12 @@ describe('coverage', () => {
     ['tenants:list', 'resolveBuilding'], ['tenants:vacancies', 'resolveBuilding'],
     ['tenants:create', 'assertBuildingAccess'], ['tenants:update', 'scoped tenant'],
     ['tenants:transferRoom', 'scoped tenant, destination room checked against it'],
+    ['tenants:transferSite', 'scoped tenant, plus assertBuildingAccess on the receiving site'],
+    ['tenants:returnHome', 'scoped tenant; returns only to the site holding their room'],
+    ['tenants:evict', 'scoped tenant'],
+    ['tenants:reinstate', 'scoped tenant, plus assertBuildingAccess on the destination'],
+    ['tenants:placementHistory', 'scopedTenant'],
+    ['tenants:roomHistory', 'scoped room'],
     ['tenants:exit', 'scoped tenant'], ['tenants:setStatus', 'scoped tenant'],
     ['visitors:board', 'resolveBuilding'], ['visitors:visitorHistory', 'scoped visitor'],
     ['visitors:register', 'assertBuildingAccess'], ['visitors:setPhoto', 'scoped visitor'],

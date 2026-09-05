@@ -4,6 +4,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import type { MutationCtx, QueryCtx } from './_generated/server'
 import { meal } from './schema'
 import { requireCapability, requireStaff, resolveBuilding } from './model'
+import { ROUTINES, routinesFor } from './routines'
 
 /**
  * How one building runs: meal sittings, laundry hours, supply limits.
@@ -109,6 +110,15 @@ export const get = query({
       building: { _id: building._id, name: building.name },
       ...settings,
       slots: laundrySlots(settings.laundry),
+      // Every round, including the ones this site has switched off — the board
+      // shows only what is running, but the settings screen has to be able to
+      // turn one back on.
+      routines: (await routinesFor(ctx, building._id)).map((r) => ({
+        ...r,
+        label: ROUTINES.find((def) => def.key === r.routine)!.label,
+        detail: ROUTINES.find((def) => def.key === r.routine)!.detail,
+        icon: ROUTINES.find((def) => def.key === r.routine)!.icon,
+      })),
     }
   },
 })

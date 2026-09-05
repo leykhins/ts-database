@@ -346,6 +346,14 @@ async function openReport() {
         </Card>
       </div>
 
+      <!--
+        Running rounds sit above the shift board on both layouts. They are the
+        one thing on this page tied to the clock rather than to a person, and
+        burying them under the roster is how an hourly round becomes a
+        three-hourly one.
+      -->
+      <TsRoutineStrip />
+
       <!-- ------------------------------------------------------ Shift board -->
       <div
         v-if="layout === 'board'"

@@ -8,17 +8,25 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 /**
  * Site settings — how this building runs.
  *
  * Meal sittings, laundry hours and supply limits are the three things every
  * site does differently, so they belong to a site manager rather than to an
- * administrator: `site-config`, which supervisors hold too.
+ * administrator: `site-config`, which coordinators hold too.
  */
 const { me, can, denied } = useMe()
 const route = useRoute()
 const buildingId = computed(() => route.params.id as Id<'buildings'>)
+
+/**
+ * One set of rules at a time. Stacked, the three cards ran well past a screen,
+ * so changing a supply cap meant scrolling through meal sittings to reach it —
+ * and each card saves independently, so there is nothing to lose by switching.
+ */
+const tab = ref<'meals' | 'laundry' | 'supplies' | 'rounds'>('meals')
 
 const { data: settings } = useConvexQuery(api.settings.get, () => ({
   buildingId: buildingId.value,
@@ -34,6 +42,7 @@ const { mutate: setLaundry, pending: savingLaundry } = useConvexMutation(api.set
 const { mutate: setSupplyLimits, pending: savingLimits } = useConvexMutation(
   api.settings.setSupplyLimits,
 )
+const { mutate: setRoutines, pending: savingRounds } = useConvexMutation(api.routines.setRoutines)
 
 const MEAL_LABEL: Record<string, string> = {
   breakfast: 'Breakfast',
@@ -56,6 +65,9 @@ const meals = ref<
 >([])
 const laundry = reactive({ from: '', to: '', slotHours: '2', weekly: '2' })
 const limits = ref<Record<string, string>>({})
+const rounds = ref<
+  { routine: string; label: string; detail: string; icon: string; every: string; enabled: boolean }[]
+>([])
 const hydrated = ref(false)
 
 watchEffect(() => {
@@ -76,6 +88,14 @@ watchEffect(() => {
   limits.value = Object.fromEntries(
     Object.entries(settings.value.supplyLimits).map(([k, n]) => [k, String(n)]),
   )
+  rounds.value = settings.value.routines.map((r) => ({
+    routine: r.routine,
+    label: r.label,
+    detail: r.detail,
+    icon: r.icon,
+    every: String(r.everyMinutes),
+    enabled: r.enabled,
+  }))
 })
 
 /** The slots the current laundry settings would produce, shown as you type. */
@@ -152,6 +172,32 @@ async function saveLimits() {
   }
 }
 
+async function saveRounds() {
+  try {
+    await setRoutines({
+      buildingId: buildingId.value,
+      routines: rounds.value.map((r) => ({
+        routine: r.routine as 'rounds',
+        everyMinutes: Math.round(Number(r.every) || 0),
+        enabled: r.enabled,
+      })),
+    })
+    toast.success('Round frequencies saved')
+  } catch (e) {
+    toast.error('Could not save the frequencies', { description: (e as Error).message })
+  }
+}
+
+/** "Every 90 minutes" in the words a manager would use, as they type. */
+function everyLabel(minutes: number): string {
+  if (!minutes || minutes < 15) return 'Not a valid interval'
+  if (minutes < 60) return `Every ${minutes} minutes`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  const hours = `${h} ${h === 1 ? 'hour' : 'hours'}`
+  return m === 0 ? `Every ${hours}` : `Every ${hours} ${m} min`
+}
+
 const readOnly = computed(() => !can('site-config'))
 </script>
 
@@ -178,7 +224,27 @@ const readOnly = computed(() => !can('site-config'))
     <TsLoadingState v-if="!settings" label="Loading settings…" :rows="4" />
 
     <template v-else>
-      <!-- Meals -->
+      <Tabs v-model="tab" class="w-full">
+        <TabsList>
+          <TabsTrigger value="meals">
+            <DsIcon name="notes" :size="15" />
+            Meals
+          </TabsTrigger>
+          <TabsTrigger value="laundry">
+            <DsIcon name="refresh" :size="15" />
+            Laundry
+          </TabsTrigger>
+          <TabsTrigger value="supplies">
+            <DsIcon name="shield-check" :size="15" />
+            Supplies
+          </TabsTrigger>
+          <TabsTrigger value="rounds">
+            <DsIcon name="clock" :size="15" />
+            Rounds
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="meals" class="mt-5">
       <Card>
         <CardContent class="flex flex-col gap-4 p-5">
           <div class="flex items-center gap-3">
@@ -241,8 +307,9 @@ const readOnly = computed(() => !can('site-config'))
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
-      <!-- Laundry -->
+        <TabsContent value="laundry" class="mt-5">
       <Card>
         <CardContent class="flex flex-col gap-4 p-5">
           <div class="flex items-center gap-3">
@@ -301,8 +368,9 @@ const readOnly = computed(() => !can('site-config'))
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
-      <!-- Supplies -->
+        <TabsContent value="supplies" class="mt-5">
       <Card>
         <CardContent class="flex flex-col gap-4 p-5">
           <div class="flex items-center gap-3">
@@ -348,6 +416,75 @@ const readOnly = computed(() => !can('site-config'))
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="rounds" class="mt-5">
+      <Card>
+        <CardContent class="flex flex-col gap-4 p-5">
+          <div class="flex items-center gap-3">
+            <span class="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-[var(--blue-50)] text-[var(--blue-600)]">
+              <DsIcon name="clock" :size="18" />
+            </span>
+            <div class="min-w-0 flex-1">
+              <span class="eyebrow">On the clock</span>
+              <div class="font-semibold text-[var(--text-strong)]">Running rounds</div>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              :loading="savingRounds"
+              :disabled="readOnly"
+              @click="saveRounds"
+            >
+              <DsIcon name="check" :size="15" />
+              Save frequencies
+            </Button>
+          </div>
+
+          <p class="-mt-2 text-sm text-muted-foreground">
+            How often each round comes due here. A tower with an elevator and a back alley
+            walks the perimeter more often than a twelve-unit house. A round that is switched
+            off leaves the Care Console entirely — it is not shown as skipped.
+          </p>
+
+          <div
+            v-for="round in rounds"
+            :key="round.routine"
+            class="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-md border border-border p-4"
+            :class="!round.enabled && 'opacity-60'"
+          >
+            <span class="inline-flex size-9 shrink-0 items-center justify-center rounded-sm bg-[var(--surface-sunken)] text-muted-foreground">
+              <DsIcon :name="round.icon" :size="18" />
+            </span>
+
+            <div class="min-w-[180px] flex-1">
+              <div class="font-semibold text-[var(--text-strong)]">{{ round.label }}</div>
+              <div class="text-xs text-muted-foreground">{{ round.detail }}</div>
+            </div>
+
+            <DsField v-slot="{ id }" label="Every (minutes)" class="w-[140px]">
+              <Input
+                :id="id"
+                v-model="round.every"
+                inputmode="numeric"
+                :disabled="readOnly || !round.enabled"
+              />
+            </DsField>
+
+            <div class="flex w-[150px] flex-col gap-1">
+              <span class="text-xs text-muted-foreground">
+                {{ round.enabled ? everyLabel(Number(round.every)) : 'Not run at this site' }}
+              </span>
+              <label class="flex items-center gap-2 text-sm">
+                <Switch v-model="round.enabled" :disabled="readOnly" />
+                <span class="text-muted-foreground">{{ round.enabled ? 'On' : 'Off' }}</span>
+              </label>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+        </TabsContent>
+      </Tabs>
     </template>
   </div>
 </template>

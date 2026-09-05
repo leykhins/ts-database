@@ -46,7 +46,7 @@ async function setup() {
 
     const users = {
       admin: await ctx.db.insert('users', { name: 'Ada', username: 'ada', role: 'admin' }),
-      supervisor: await ctx.db.insert('users', { name: 'Fran', username: 'fran', role: 'supervisor', assignedBuildingIds: [buildingId] }),
+      coordinator: await ctx.db.insert('users', { name: 'Fran', username: 'fran', role: 'coordinator', assignedBuildingIds: [buildingId] }),
       rsw: await ctx.db.insert('users', { name: 'Devon', username: 'devon', role: 'rsw', assignedBuildingIds: [buildingId] }),
     }
 
@@ -73,7 +73,7 @@ describe('social insurance numbers', () => {
   test('revealing one is refused for a care role', async () => {
     const { as, users, tenantId } = await setup()
 
-    expect(await as(users.supervisor).query(api.profile.revealSin, { tenantId })).toBe('123-456-789')
+    expect(await as(users.coordinator).query(api.profile.revealSin, { tenantId })).toBe('123-456-789')
     await expect(as(users.rsw).query(api.profile.revealSin, { tenantId })).rejects.toThrow(
       /does not have access/,
     )
@@ -180,7 +180,7 @@ describe('the responder sheet', () => {
 describe('contacts', () => {
   test('only one contact is next of kin', async () => {
     const { as, users, tenantId } = await setup()
-    const staff = as(users.supervisor)
+    const staff = as(users.coordinator)
 
     await staff.mutation(api.profile.addContact, {
       tenantId,

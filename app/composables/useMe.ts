@@ -18,7 +18,7 @@ export type Capability =
 export const ROLES = [
   { value: 'admin', label: 'Administrator', short: 'Admin' },
   { value: 'building-manager', label: 'Building Manager', short: 'Manager' },
-  { value: 'supervisor', label: 'Building Supervisor', short: 'Supervisor' },
+  { value: 'coordinator', label: 'Coordinator', short: 'Coordinator' },
   { value: 'rsw', label: 'Resident Support Worker', short: 'RSW' },
   { value: 'wellness', label: 'Wellness Worker', short: 'Wellness' },
   { value: 'home-support', label: 'Home Support Worker', short: 'Home Support' },

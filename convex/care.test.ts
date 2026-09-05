@@ -61,7 +61,7 @@ async function setup(residents = 4) {
     const bookkeeper = await ctx.db.insert('users', {
       name: 'Sam Ledger',
       email: 'sam@housing.org',
-      role: 'supervisor',
+      role: 'coordinator',
       assignedBuildingIds: [buildingId],
     })
 

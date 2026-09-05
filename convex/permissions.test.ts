@@ -17,7 +17,7 @@ const modules = import.meta.glob('./**/*.ts')
  * `rsw` stands in for the three care roles, which hold identical authority and
  * differ only in their shift duties.
  */
-type Role = 'admin' | 'building-manager' | 'supervisor' | 'rsw'
+type Role = 'admin' | 'building-manager' | 'coordinator' | 'rsw'
 
 /** A building with one room and one resident, plus a user per role. */
 async function setup() {
@@ -50,7 +50,7 @@ async function setup() {
     })
 
     const users = {} as Record<Role, Id<'users'>>
-    for (const role of ['admin', 'building-manager', 'supervisor', 'rsw'] as Role[]) {
+    for (const role of ['admin', 'building-manager', 'coordinator', 'rsw'] as Role[]) {
       users[role] = await ctx.db.insert('users', { name: role, username: role, role, assignedBuildingIds: [buildingId] })
     }
 
@@ -64,10 +64,10 @@ async function setup() {
 }
 
 describe('capabilities', () => {
-  test('a supervisor may take rent; a support worker may not', async () => {
+  test('a coordinator may take rent; a support worker may not', async () => {
     const { as, users, tenantId } = await setup()
 
-    await as(users.supervisor).mutation(api.rents.receivePayment, {
+    await as(users.coordinator).mutation(api.rents.receivePayment, {
       tenantId,
       amountCents: 10_000,
       method: 'cash',
@@ -82,7 +82,7 @@ describe('capabilities', () => {
     ).rejects.toThrow(/cannot do this/)
   })
 
-  test('a supervisor may intake a resident; a support worker may not', async () => {
+  test('a coordinator may intake a resident; a support worker may not', async () => {
     const { as, users, buildingId } = await setup()
 
     const intake = {
@@ -95,7 +95,7 @@ describe('capabilities', () => {
       depositRequiredCents: 49_500,
     }
 
-    await as(users.supervisor).mutation(api.tenants.create, intake)
+    await as(users.coordinator).mutation(api.tenants.create, intake)
 
     await expect(
       as(users.rsw).mutation(api.tenants.create, { ...intake, name: 'Nope' }),
@@ -106,7 +106,7 @@ describe('capabilities', () => {
    * The crux of the Building Manager role: it runs the fabric of a building
    * without being handed the portfolio or the staff directory.
    */
-  test('a building manager may add a room; a supervisor may not', async () => {
+  test('a building manager may add a room; a coordinator may not', async () => {
     const { as, users, buildingId } = await setup()
 
     await as(users['building-manager']).mutation(api.rooms.create, {
@@ -117,7 +117,7 @@ describe('capabilities', () => {
     })
 
     await expect(
-      as(users.supervisor).mutation(api.rooms.create, {
+      as(users.coordinator).mutation(api.rooms.create, {
         buildingId,
         number: '103',
         floor: 'Floor 1',
@@ -126,7 +126,7 @@ describe('capabilities', () => {
     ).rejects.toThrow(/cannot do this/)
   })
 
-  test('a building manager may edit the building; a supervisor may not', async () => {
+  test('a building manager may edit the building; a coordinator may not', async () => {
     const { as, users, buildingId } = await setup()
 
     await as(users['building-manager']).mutation(api.buildings.update, {
@@ -137,7 +137,7 @@ describe('capabilities', () => {
     })
 
     await expect(
-      as(users.supervisor).mutation(api.buildings.update, {
+      as(users.coordinator).mutation(api.buildings.update, {
         buildingId,
         name: 'Renamed',
         units: 48,
@@ -163,7 +163,7 @@ describe('capabilities', () => {
 
     await as(users.admin).mutation(api.buildings.create, { name: 'Carrall Annex', units: 36 })
 
-    for (const role of ['building-manager', 'supervisor', 'rsw'] as Role[]) {
+    for (const role of ['building-manager', 'coordinator', 'rsw'] as Role[]) {
       await expect(
         as(users[role]).mutation(api.buildings.create, { name: 'Nope', units: 1 }),
       ).rejects.toThrow(/cannot do this/)
@@ -173,19 +173,19 @@ describe('capabilities', () => {
   test('a support level change records who, what and why', async () => {
     const { as, users, tenantId } = await setup()
 
-    await as(users.supervisor).mutation(api.support.setLevel, {
+    await as(users.coordinator).mutation(api.support.setLevel, {
       tenantId,
       supportLevel: 'critical',
       reason: 'Daily medication support needed',
     })
 
-    const history = await as(users.supervisor).query(api.support.historyFor, { tenantId })
+    const history = await as(users.coordinator).query(api.support.historyFor, { tenantId })
     expect(history).toHaveLength(1)
     expect(history[0]).toMatchObject({
       from: 'moderate',
       to: 'critical',
       reason: 'Daily medication support needed',
-      changedBy: 'supervisor',
+      changedBy: 'coordinator',
     })
   })
 
@@ -203,16 +203,16 @@ describe('capabilities', () => {
 })
 
 describe('role simulation', () => {
-  test('an administrator testing as a supervisor is really held to it', async () => {
+  test('an administrator testing as a coordinator is really held to it', async () => {
     const { as, users, tenantId, buildingId } = await setup()
     const admin = as(users.admin)
 
-    await admin.mutation(api.users.setSimulatedRole, { role: 'supervisor' })
+    await admin.mutation(api.users.setSimulatedRole, { role: 'coordinator' })
 
     const me = await admin.query(api.users.me)
-    expect(me).toMatchObject({ role: 'supervisor', realRole: 'admin', simulating: true })
+    expect(me).toMatchObject({ role: 'coordinator', realRole: 'admin', simulating: true })
 
-    // A supervisor touches neither the building's fabric nor the portfolio…
+    // A coordinator touches neither the building's fabric nor the portfolio…
     await expect(
       admin.mutation(api.rooms.create, {
         buildingId,
@@ -220,10 +220,10 @@ describe('role simulation', () => {
         floor: 'Floor 9',
         monthlyRentCents: 1,
       }),
-    ).rejects.toThrow(/testing as Building Supervisor/)
+    ).rejects.toThrow(/testing as Coordinator/)
     await expect(
       admin.mutation(api.buildings.create, { name: 'Nope', units: 1 }),
-    ).rejects.toThrow(/testing as Building Supervisor/)
+    ).rejects.toThrow(/testing as Coordinator/)
 
     // …but does take rent.
     await admin.mutation(api.rents.receivePayment, {
@@ -270,7 +270,7 @@ describe('role simulation', () => {
     const { as, users } = await setup()
 
     await expect(
-      as(users.supervisor).mutation(api.users.setSimulatedRole, { role: 'admin' }),
+      as(users.coordinator).mutation(api.users.setSimulatedRole, { role: 'admin' }),
     ).rejects.toThrow(/Only an administrator/)
   })
 })
@@ -278,7 +278,7 @@ describe('role simulation', () => {
 describe('money', () => {
   test('the cached balance follows the ledger', async () => {
     const { t, as, users, tenantId, buildingId } = await setup()
-    const staff = as(users.supervisor)
+    const staff = as(users.coordinator)
 
     await staff.mutation(api.rents.chargeMonthlyRent, { buildingId, periodLabel: 'Jun 2026' })
     await staff.mutation(api.rents.receivePayment, {
@@ -306,7 +306,7 @@ describe('money', () => {
 
   test('a period is never charged twice', async () => {
     const { as, users, buildingId } = await setup()
-    const staff = as(users.supervisor)
+    const staff = as(users.coordinator)
 
     const first = await staff.mutation(api.rents.chargeMonthlyRent, {
       buildingId,
@@ -324,7 +324,7 @@ describe('money', () => {
 
   test('a deposit cannot be taken below zero', async () => {
     const { as, users, tenantId } = await setup()
-    const staff = as(users.supervisor)
+    const staff = as(users.coordinator)
 
     await staff.mutation(api.rents.adjustDeposit, {
       tenantId,
@@ -347,7 +347,7 @@ describe('tenancy', () => {
     const { as, users, buildingId, roomId } = await setup()
 
     await expect(
-      as(users.supervisor).mutation(api.tenants.create, {
+      as(users.coordinator).mutation(api.tenants.create, {
         buildingId,
         roomId,
         name: 'Maria Santos',
@@ -362,7 +362,7 @@ describe('tenancy', () => {
 
   test('an exit releases the room and leaves the money alone', async () => {
     const { t, as, users, tenantId } = await setup()
-    const staff = as(users.supervisor)
+    const staff = as(users.coordinator)
 
     await staff.mutation(api.rents.receivePayment, {
       tenantId,

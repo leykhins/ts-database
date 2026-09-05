@@ -48,6 +48,20 @@ export function relativeDays(ts: number | null | undefined): string {
   return `${days} days ago`
 }
 
+/**
+ * "12m" / "3h" / "2d" — the compact form, for a list where every row carries a
+ * time and the times are not the thing being read.
+ */
+export function shortAge(ts: number | null | undefined, now = Date.now()): string {
+  if (ts == null || ts <= 0) return '—'
+  const mins = Math.max(0, Math.floor((now - ts) / 60_000))
+  if (mins < 1) return 'now'
+  if (mins < 60) return `${mins}m`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
+}
+
 /** `510` → `8:30 am`. Minutes from midnight are the wire format for site hours. */
 export function formatMinutes(minutes: number | null | undefined): string {
   if (minutes == null) return '—'
