@@ -307,6 +307,108 @@ export const createTestAccount = internalAction({
   },
 })
 
+/**
+ * One account per role, for testing:
+ *
+ *     npx convex run users:seedTestAccounts '{"password":"…"}'
+ *
+ * Idempotent — run it again after a `wipeAll`, or to re-point the accounts at
+ * newly seeded buildings, and it resets rather than failing on the ones that
+ * already exist. Every account is assigned to every building, because the point
+ * of them is to look at screens, not to test scoping; the scoping suite does
+ * that with fixtures that cannot be signed into.
+ *
+ * The password is an argument with no default, same as `createTestAccount`: an
+ * account with a known password that a deploy could mint on its own is a
+ * backdoor regardless of what the accounts are called. Anyone who can run this
+ * already holds the deploy key.
+ */
+export const seedTestAccounts = internalAction({
+  args: { password: v.string() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ username: string; role: string; created: boolean }[]> => {
+    if (args.password.length < MIN_PASSWORD) {
+      throw new Error(`The password must be at least ${MIN_PASSWORD} characters.`)
+    }
+
+    const FIXTURES = [
+      { username: 'test.admin', name: 'Avery Quinn', role: 'admin' as const },
+      { username: 'test.manager', name: 'Dana Whitlock', role: 'building-manager' as const },
+      { username: 'test.coordinator', name: 'Priya Raman', role: 'coordinator' as const },
+      { username: 'test.rsw', name: 'Devon Mraz', role: 'rsw' as const },
+      { username: 'test.wellness', name: 'Nia Okonkwo', role: 'wellness' as const },
+      { username: 'test.support', name: 'Bo Tran', role: 'home-support' as const },
+    ]
+
+    const buildingIds = await ctx.runQuery(internal.users.allBuildingIds, {})
+    const out: { username: string; role: string; created: boolean }[] = []
+
+    for (const fixture of FIXTURES) {
+      const existing = await ctx.runQuery(internal.users.findByUsername, {
+        username: fixture.username,
+      })
+
+      if (existing) {
+        await modifyAccountCredentials<DataModel>(ctx, {
+          provider: 'password',
+          account: { id: fixture.username, secret: args.password },
+        })
+        await ctx.runMutation(internal.users.refreshTestAccount, {
+          userId: existing._id,
+          role: fixture.role,
+          assignedBuildingIds: buildingIds,
+        })
+      } else {
+        await createAccount<DataModel>(ctx, {
+          provider: 'password',
+          account: { id: fixture.username, secret: args.password },
+          profile: {
+            name: fixture.name,
+            username: fixture.username,
+            role: fixture.role,
+            ...(buildingIds.length ? { assignedBuildingIds: buildingIds } : {}),
+          },
+        })
+      }
+
+      out.push({ username: fixture.username, role: fixture.role, created: !existing })
+    }
+
+    return out
+  },
+})
+
+export const allBuildingIds = internalQuery({
+  args: {},
+  handler: async (ctx) =>
+    (await ctx.db.query('buildings').collect()).map((b) => b._id),
+})
+
+/**
+ * Put a test account back to its intended role and assignments.
+ *
+ * `simulatedRole` is cleared too: an account left mid-simulation from a previous
+ * session would come back as whatever role was being tested, which is the one
+ * thing a fixture must not do.
+ */
+export const refreshTestAccount = internalMutation({
+  args: {
+    userId: v.id('users'),
+    role: staffRole,
+    assignedBuildingIds: v.array(v.id('buildings')),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userId, {
+      role: args.role,
+      assignedBuildingIds: args.assignedBuildingIds,
+      simulatedRole: undefined,
+    })
+    return null
+  },
+})
+
 export const updateRole = mutation({
   args: { userId: v.id('users'), role: staffRole },
   handler: async (ctx, args) => {

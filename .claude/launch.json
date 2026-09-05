@@ -4,6 +4,12 @@
     {
       "name": "ts-database",
       "url": "http://localhost:3000"
+    },
+    {
+      "name": "ts-database-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
     }
   ]
 }

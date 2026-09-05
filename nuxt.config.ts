@@ -65,4 +65,27 @@ export default defineNuxtConfig({
       convexUrl: process.env.NUXT_PUBLIC_CONVEX_URL || process.env.CONVEX_URL || '',
     },
   },
+
+  /*
+     The password the dev sign-in picker fills (see app/dev/AccountPicker.vue).
+
+     Not `runtimeConfig.public`: every key there is serialized into the built
+     app and served to the browser, so a production build that happened to have
+     the variable set would publish it. A `define` split across $development and
+     $production cannot do that — in a production build the literal is `""`
+     before any bundling happens, whatever the environment says.
+  */
+  $development: {
+    vite: {
+      define: {
+        __DEV_PASSWORD__: JSON.stringify(process.env.NUXT_PUBLIC_DEV_PASSWORD || ''),
+      },
+    },
+  },
+
+  $production: {
+    vite: {
+      define: { __DEV_PASSWORD__: '""' },
+    },
+  },
 })

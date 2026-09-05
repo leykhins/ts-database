@@ -31,6 +31,28 @@ watchEffect(() => {
   if (needsBootstrap.value === false && mode.value === 'signUp') mode.value = 'signIn'
 })
 
+/**
+ * The test-account picker, development only.
+ *
+ * `import.meta.dev` is a compile-time constant. In a production build this is
+ * `false`, nothing references the import, and Rollup drops the component's
+ * whole chunk — markup, usernames and password together. A `v-if` on a runtime
+ * flag would not do that: the markup would ship and only the rendering would be
+ * skipped. That is why this is a dynamic import rather than a plain component.
+ */
+const AccountPicker = import.meta.dev
+  ? defineAsyncComponent(() => import('~/dev/AccountPicker.vue'))
+  : null
+
+function fillTestAccount(account: { username: string; password: string }) {
+  mode.value = 'signIn'
+  username.value = account.username
+  password.value = account.password
+  error.value = account.password
+    ? ''
+    : 'No dev password is set. Put NUXT_PUBLIC_DEV_PASSWORD in .env.local, then create the accounts: npx convex run users:seedTestAccounts \'{"password":"…"}\''
+}
+
 async function submit() {
   error.value = ''
   if (!username.value.trim() || !password.value) {
@@ -175,6 +197,9 @@ async function submit() {
             Accounts are created by an administrator.
           </p>
         </form>
+
+        <!-- Development only; the whole chunk is dropped from a production build. -->
+        <component :is="AccountPicker" v-if="AccountPicker" @fill="fillTestAccount" />
       </CardContent>
     </Card>
   </div>
