@@ -127,30 +127,30 @@ async function openReport() {
 
 <template>
   <div class="flex flex-col gap-5">
-    <DsSectionHeader
-      :eyebrow="data ? `${data.current.label} · ${data.building.name}` : undefined"
-      title="Care Console"
-      description="Who has been seen this shift, who is overdue, and what this role has to finish before handover."
-    >
-      <template #actions>
-        <Button
-          variant="secondary"
-          :disabled="starting || !can('wellness')"
-          :title="denied('wellness') ?? 'Log interactions and events, and finalize your shift'"
-          @click="openReport"
-        >
-          <DsIcon name="file-text" :size="17" />
-          {{ data?.me.reportId ? 'My shift report' : 'Start shift report' }}
-          <Badge v-if="data?.me.entryCount" variant="neutral">{{ data.me.entryCount }}</Badge>
-        </Button>
-        <Tabs v-model="layout">
-          <TabsList>
-            <TabsTrigger value="board">Shift Board</TabsTrigger>
-            <TabsTrigger value="shift">My Shift</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </template>
-    </DsSectionHeader>
+    <!--
+      No page title. The topbar already says "Care Console" with the site and
+      shift above it, and a second copy immediately underneath was the same
+      words twice on the one screen where vertical space is worth most — this is
+      a console somebody works from standing up.
+    -->
+    <div class="flex flex-wrap items-center justify-end gap-2">
+      <Button
+        variant="secondary"
+        :disabled="starting || !can('wellness')"
+        :title="denied('wellness') ?? 'Log interactions and events, and finalize your shift'"
+        @click="openReport"
+      >
+        <DsIcon name="file-text" :size="17" />
+        {{ data?.me.reportId ? 'My shift report' : 'Start shift report' }}
+        <Badge v-if="data?.me.entryCount" variant="neutral">{{ data.me.entryCount }}</Badge>
+      </Button>
+      <Tabs v-model="layout">
+        <TabsList>
+          <TabsTrigger value="board">Shift Board</TabsTrigger>
+          <TabsTrigger value="shift">My Shift</TabsTrigger>
+        </TabsList>
+      </Tabs>
+    </div>
 
     <TsLoadingState v-if="isLoading" label="Loading the shift…" :rows="6" />
 
@@ -162,8 +162,12 @@ async function openReport() {
     />
 
     <template v-else>
-      <!-- ---------------------------------------------- Hero: index + brief -->
-      <div class="grid gap-5 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
+      <!--
+        Hero: the shift in three readings — how it is going, what to do next,
+        and which hours are accounted for. One row on a desk monitor, stacking
+        on anything narrower.
+      -->
+      <div class="grid items-start gap-5 [grid-template-columns:repeat(auto-fit,minmax(290px,1fr))]">
         <Card>
           <CardContent class="flex flex-col gap-4 p-5">
             <div class="flex items-center justify-between gap-2">
@@ -344,15 +348,15 @@ async function openReport() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      <!--
-        Running rounds sit above the shift board on both layouts. They are the
-        one thing on this page tied to the clock rather than to a person, and
-        burying them under the roster is how an hourly round becomes a
-        three-hourly one.
-      -->
-      <TsRoutineStrip />
+        <!--
+          Third in the hero, not below the roster. Rounds are the one thing on
+          this page tied to the clock rather than to a person, and burying them
+          under the shift board is how an hourly round becomes a three-hourly
+          one.
+        -->
+        <TsRoutineStrip />
+      </div>
 
       <!-- ------------------------------------------------------ Shift board -->
       <div
