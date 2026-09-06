@@ -45,7 +45,7 @@ export default defineNuxtConfig({
        elimination; a runtime config key cannot.
     */
     define: {
-      __DEMO_PASSWORD__: JSON.stringify(process.env.NUXT_PUBLIC_DEMO_PASSWORD || ''),
+      __DEMO_PASSWORD__: JSON.stringify(process.env.NUXT_DEMO_PASSWORD || ''),
     },
   },
 

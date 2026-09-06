@@ -321,7 +321,7 @@ npx convex run users:seedTestAccounts '{"password":"…"}'
 Then set the same password for whichever environment should offer them:
 
 ```
-NUXT_PUBLIC_DEMO_PASSWORD=…
+NUXT_DEMO_PASSWORD=…
 ```
 
 A **Fill a test account** picker appears under the sign-in form, listing
