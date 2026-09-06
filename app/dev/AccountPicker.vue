@@ -12,7 +12,7 @@ import {
 /**
  * Fill the sign-in form with a demo account.
  *
- * Present wherever `NUXT_PUBLIC_DEMO_PASSWORD` is set at build time, which now
+ * Present wherever `NUXT_DEMO_PASSWORD` is set at build time, which now
  * includes the public deployment — a deliberate choice, made knowing what it
  * means: these are open credentials on a URL with no SSO and no password, so
  * anyone who finds the link can sign in as an administrator and change or
