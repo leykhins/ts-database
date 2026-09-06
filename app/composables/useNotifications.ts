@@ -41,9 +41,14 @@ export function useNotifications() {
   const { selected } = useSelectedBuilding()
   const now = useNow()
 
+  // Rounds are answered in slots on the building's clock, so the feed needs the
+  // offset as well as the moment — "the 9pm round" has to mean 9pm there.
+  const tz = new Date().getTimezoneOffset()
+
   const { data, isLoading } = useConvexQuery(api.notifications.feed, () => ({
     ...(selected.value ? { buildingId: selected.value } : {}),
     now: now.value,
+    tzOffsetMinutes: tz,
   }))
 
   const { mutate } = useConvexMutation(api.notifications.markRead)

@@ -268,7 +268,7 @@ describe('building scoping', () => {
     const now = Date.now()
 
     await expect(
-      as(users.workerA).query(api.routines.board, { buildingId: buildingB, now }),
+      as(users.workerA).query(api.routines.board, { buildingId: buildingB, now, tzOffsetMinutes: 0 }),
     ).rejects.toThrow(REFUSED)
     await expect(
       as(users.workerA).query(api.routines.history, {
@@ -280,6 +280,7 @@ describe('building scoping', () => {
       as(users.workerA).mutation(api.routines.complete, {
         buildingId: buildingB,
         routine: 'rounds',
+        tzOffsetMinutes: 0,
       }),
     ).rejects.toThrow(REFUSED)
   })
@@ -303,13 +304,14 @@ describe('building scoping', () => {
   test('a worker cannot read another building’s notifications', async () => {
     const { as, users, buildingA, buildingB } = await setup()
 
-    const own = await as(users.workerA).query(api.notifications.feed, { now: Date.now() })
+    const own = await as(users.workerA).query(api.notifications.feed, { now: Date.now(), tzOffsetMinutes: 0 })
     expect(own?.building._id).toBe(buildingA)
 
     await expect(
       as(users.workerA).query(api.notifications.feed, {
         buildingId: buildingB,
         now: Date.now(),
+        tzOffsetMinutes: 0,
       }),
     ).rejects.toThrow(REFUSED)
   })

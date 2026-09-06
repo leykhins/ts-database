@@ -4,12 +4,14 @@ import type { Id } from './_generated/dataModel'
 import type { QueryCtx } from './_generated/server'
 import {
   CHECK_INTERVAL_MS,
+  SHIFTS,
   can,
   money,
   requireStaff,
   resolveBuilding,
+  shiftAt,
 } from './model'
-import { dueState, routinesFor, ROUTINES } from './routines'
+import { atLocal, graceMinutes, routinesFor, slotsWithStatus, ROUTINES } from './routines'
 
 /**
  * The bell.
@@ -55,6 +57,11 @@ export const feed = query({
   args: {
     buildingId: v.optional(v.id('buildings')),
     now: v.number(),
+    /**
+     * The browser's `getTimezoneOffset()`. Rounds are answered in slots on the
+     * building's own clock, so "the 9pm round" has to mean 9pm there.
+     */
+    tzOffsetMinutes: v.number(),
   },
   handler: async (ctx, args) => {
     const staff = await requireStaff(ctx)
@@ -66,7 +73,7 @@ export const feed = query({
     const items: Notification[] = []
 
     if (can(staff, 'checks')) {
-      items.push(...(await overdueRoutines(ctx, buildingId, now)))
+      items.push(...(await overdueRoutines(ctx, buildingId, now, args.tzOffsetMinutes)))
       items.push(...(await staleRoomChecks(ctx, buildingId, now)))
     }
 
@@ -107,44 +114,91 @@ export const feed = query({
    hourly round is a new notification every hour, not one that never returns.
    ------------------------------------------------------------------------- */
 
+/**
+ * Rounds, in the same slots the Care Console shows.
+ *
+ * This deliberately does not measure from the last completion. A rolling
+ * interval has no memory of a skipped round: walk the 9pm one at 9:55 and the
+ * 10pm slot can pass unwalked while the interval still reads "due in 50
+ * minutes", so the card would show a gap the bell stayed quiet about. The bell
+ * has to be at least as alarmed as the screen it summarises.
+ *
+ * At most one item per routine, because three routines producing a line per
+ * missed hour is a bell nobody finishes reading.
+ */
 async function overdueRoutines(
   ctx: QueryCtx,
   buildingId: Id<'buildings'>,
   now: number,
+  tzOffsetMinutes: number,
 ): Promise<Notification[]> {
   const settings = await routinesFor(ctx, buildingId)
+  const { key: shiftKey, shiftDate } = shiftAt(now, tzOffsetMinutes)
+  const shift = SHIFTS.find((s) => s.key === shiftKey)!
+  const shiftStart = atLocal(shiftDate, shift.from * 60, tzOffsetMinutes)
+
+  const completions = await ctx.db
+    .query('routineCompletions')
+    .withIndex('by_building_completed', (q) =>
+      q.eq('buildingId', buildingId).gte('completedAt', shiftStart),
+    )
+    .collect()
+
   const out: Notification[] = []
 
   for (const setting of settings) {
     if (!setting.enabled) continue
     const def = ROUTINES.find((r) => r.key === setting.routine)!
-    const last = await ctx.db
-      .query('routineCompletions')
-      .withIndex('by_building_routine', (q) =>
-        q.eq('buildingId', buildingId).eq('routine', setting.routine),
-      )
-      .order('desc')
-      .first()
 
-    const state = dueState(setting.everyMinutes, last?.completedAt ?? null, now)
-    if (state.status === 'ok') continue
+    const slots = slotsWithStatus(
+      setting.everyMinutes,
+      shift,
+      shiftDate,
+      tzOffsetMinutes,
+      completions.filter((c) => c.routine === setting.routine).map((c) => c.completedAt),
+      now,
+    )
 
-    out.push({
-      // The due time, so completing it and letting it fall due again is a new
-      // notification rather than one that was already dismissed this morning.
-      key: `routine:${setting.routine}:${state.dueAt}`,
-      kind: 'routine',
-      severity: state.status === 'overdue' ? 'high' : 'med',
-      title:
-        state.status === 'overdue'
-          ? `${def.label} is ${minutes(state.minutesLate)} late`
-          : `${def.label} is due`,
-      detail: last
-        ? `Last walked ${clock(last.completedAt)}. Due every ${minutes(setting.everyMinutes)}.`
-        : `Nothing on record yet. Due every ${minutes(setting.everyMinutes)}.`,
-      at: state.dueAt,
-      href: '/care',
-    })
+    const missed = slots.filter((s) => s.status === 'missed')
+    const current = slots.find((s) => s.status === 'now')
+
+    // A missed round outranks one merely running, and only one of the two is
+    // reported: the gap is the thing to act on, and the current slot is
+    // visible on the console anyway.
+    if (missed.length > 0) {
+      const latest = missed[missed.length - 1]!
+      out.push({
+        key: `routine:${setting.routine}:missed:${latest.startsAt}`,
+        kind: 'routine',
+        severity: 'high',
+        title:
+          missed.length === 1
+            ? `${def.label} missed at ${clock(latest.startsAt)}`
+            : `${def.label} missed ${missed.length} times this shift`,
+        detail: `Every ${minutes(setting.everyMinutes)} on this site. Latest gap ${clock(latest.startsAt)}–${clock(latest.endsAt)}.`,
+        at: latest.endsAt,
+        href: '/care',
+      })
+      continue
+    }
+
+    // Only once it is genuinely running late inside its own slot — announcing
+    // a round the second its hour begins is a notification for every hour of
+    // every shift, which is the fastest way to make the bell worthless.
+    if (current) {
+      const grace = graceMinutes(setting.everyMinutes)
+      if (now >= current.startsAt + grace * 60_000) {
+        out.push({
+          key: `routine:${setting.routine}:${current.startsAt}`,
+          kind: 'routine',
+          severity: 'med',
+          title: `${def.label} due this hour`,
+          detail: `The ${clock(current.startsAt)}–${clock(current.endsAt)} round has not been logged.`,
+          at: current.startsAt,
+          href: '/care',
+        })
+      }
+    }
   }
 
   return out

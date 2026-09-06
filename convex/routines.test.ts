@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { api } from './_generated/api'
 import type { Id } from './_generated/dataModel'
 import schema from './schema'
-import { dueState } from './routines'
+import { graceMinutes, shiftSlots } from './routines'
 
 /**
  * Rounds and the bell.
@@ -18,8 +18,14 @@ import { dueState } from './routines'
 
 const modules = import.meta.glob('./**/*.ts')
 
-const MINUTE = 60_000
-const HOUR = 60 * MINUTE
+const HOUR = 60 * 60_000
+
+/**
+ * UTC. Slots are anchored to local midnight, so a fixture that drifts with the
+ * machine's timezone would put "the 9pm round" in a different slot depending on
+ * where the suite runs.
+ */
+const TZ = 0
 
 async function setup() {
   const t = convexTest(schema, modules)
@@ -73,64 +79,129 @@ async function setup() {
   return { t, as, ...ids }
 }
 
-describe('when a round is due', () => {
-  test('a round nobody has ever walked is due, not late', () => {
-    // A site's first morning on the system has not missed anything.
-    expect(dueState(60, null, Date.now())).toMatchObject({ status: 'due', minutesLate: 0 })
+describe('how a shift divides into slots', () => {
+  test('the frequency sets how many rounds a shift owes', () => {
+    // Evening, 4pm–12am.
+    expect(shiftSlots(60, 16, 24)).toHaveLength(8)
+    expect(shiftSlots(120, 16, 24)).toHaveLength(4)
+    expect(shiftSlots(240, 16, 24)).toHaveLength(2)
+
+    expect(shiftSlots(120, 16, 24)[0]).toEqual({ startMinutes: 960, endMinutes: 1080 })
+  })
+
+  test('a trailing part-slot is not offered as a round', () => {
+    // 90 minutes across an 8-hour shift leaves half an hour over. Five rounds,
+    // not five and a bit — 30 minutes is not a walk of the building, and
+    // offering it as one invites a half-done sweep to be signed off.
+    expect(shiftSlots(90, 16, 24)).toHaveLength(5)
+    expect(shiftSlots(90, 16, 24).at(-1)!.endMinutes).toBe(1410) // 23:30
   })
 
   test('grace scales with the interval', () => {
-    const now = Date.now()
-
-    // Hourly round, 10 minutes past: still "due", inside the 15-minute grace.
-    expect(dueState(60, now - 70 * MINUTE, now).status).toBe('due')
-    // 20 minutes past the same round is late.
-    expect(dueState(60, now - 80 * MINUTE, now).status).toBe('overdue')
-
-    // The same 20 minutes on a four-hourly round is not late at all — the
-    // grace there is an hour, because the two lateness figures do not mean
-    // the same thing.
-    expect(dueState(240, now - 260 * MINUTE, now).status).toBe('due')
-  })
-
-  test('lateness is measured from when it fell due, not from the last walk', () => {
-    const now = Date.now()
-    const state = dueState(60, now - 150 * MINUTE, now)
-    expect(state.status).toBe('overdue')
-    expect(state.minutesLate).toBe(90)
+    // Fifteen minutes into an hourly round is still that round being walked;
+    // fifteen minutes into a four-hourly one is barely started.
+    expect(graceMinutes(60)).toBe(15)
+    expect(graceMinutes(240)).toBe(60)
+    // Never so small that a round is late the moment its hour opens.
+    expect(graceMinutes(15)).toBe(5)
   })
 })
 
 describe('logging a round', () => {
-  test('a completion clears it from the board and from the bell', async () => {
-    const { as, buildingId, worker } = await setup()
-    const now = Date.now()
+  test('a walked slot is filled, and the bell stops asking about it', async () => {
+    const { t, as, buildingId, worker } = await setup()
 
-    const before = await as(worker).query(api.routines.board, { buildingId, now })
-    // Nothing on record, so every enabled round is asking to be walked.
-    expect(before!.rows.every((r) => r.status === 'due')).toBe(true)
+    // 08:30 UTC: half an hour into the morning shift's first hourly slot, so
+    // there is a live slot and nothing yet missed behind it.
+    const at = (h: number, m = 0) => Date.UTC(2026, 8, 4, h, m)
 
-    const feedBefore = await as(worker).query(api.notifications.feed, { buildingId, now })
-    expect(feedBefore!.rows.filter((r) => r.kind === 'routine')).toHaveLength(3)
-
-    await as(worker).mutation(api.routines.complete, { buildingId, routine: 'rounds' })
-
-    const after = await as(worker).query(api.routines.board, { buildingId, now: Date.now() })
-    expect(after!.rows.find((r) => r.routine === 'rounds')).toMatchObject({
-      status: 'ok',
-      lastBy: 'Devon Mraz',
+    const before = await as(worker).query(api.routines.board, {
+      buildingId,
+      now: at(8, 30),
+      tzOffsetMinutes: TZ,
     })
+    const rounds = before!.rows.find((r) => r.routine === 'rounds')!
+    expect(rounds.total).toBe(8) // 8am–4pm, hourly
+    expect(rounds.slots[0]).toMatchObject({ startMinutes: 480, status: 'now' })
+    expect(rounds.missed).toBe(0)
+
+    // Past the 15-minute grace inside its own hour, so the bell is asking.
+    const feedBefore = await as(worker).query(api.notifications.feed, {
+      buildingId,
+      now: at(8, 30),
+      tzOffsetMinutes: TZ,
+    })
+    expect(feedBefore!.rows.find((r) => r.key === `routine:rounds:${at(8)}`)).toMatchObject({
+      severity: 'med',
+    })
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert('routineCompletions', {
+        buildingId,
+        routine: 'rounds',
+        completedAt: at(8, 40),
+        completedBy: worker,
+      })
+    })
+
+    const after = await as(worker).query(api.routines.board, {
+      buildingId,
+      now: at(8, 45),
+      tzOffsetMinutes: TZ,
+    })
+    const walked = after!.rows.find((r) => r.routine === 'rounds')!
+    expect(walked.slots[0]).toMatchObject({ status: 'done', doneAt: at(8, 40) })
+    expect(walked.done).toBe(1)
+    expect(walked.lastBy).toBe('Devon Mraz')
 
     const feedAfter = await as(worker).query(api.notifications.feed, {
       buildingId,
-      now: Date.now(),
+      now: at(8, 45),
+      tzOffsetMinutes: TZ,
     })
     expect(feedAfter!.rows.some((r) => r.key.startsWith('routine:rounds'))).toBe(false)
   })
 
-  test('how late it was is recorded, not recomputed later', async () => {
+  test('a slot that has ended unwalked is missed, and stays missed', async () => {
+    const { t, as, buildingId, worker } = await setup()
+    const at = (h: number, m = 0) => Date.UTC(2026, 8, 4, h, m)
+
+    // Walked at 10:20 — the 9am hour was skipped and cannot be recovered by
+    // walking the 10am one. This is the case a rolling interval forgets.
+    await t.run(async (ctx) => {
+      await ctx.db.insert('routineCompletions', {
+        buildingId,
+        routine: 'rounds',
+        completedAt: at(10, 20),
+        completedBy: worker,
+      })
+    })
+
+    const board = await as(worker).query(api.routines.board, {
+      buildingId,
+      now: at(10, 30),
+      tzOffsetMinutes: TZ,
+    })
+    const rounds = board!.rows.find((r) => r.routine === 'rounds')!
+    expect(rounds.slots.filter((s) => s.status === 'missed').map((s) => s.startMinutes))
+      .toEqual([480, 540]) // 8am and 9am
+    expect(rounds.done).toBe(1)
+
+    const feed = await as(worker).query(api.notifications.feed, {
+      buildingId,
+      now: at(10, 30),
+      tzOffsetMinutes: TZ,
+    })
+    expect(feed!.rows.find((r) => r.kind === 'routine' && r.key.includes('rounds:missed')))
+      .toMatchObject({ severity: 'high', title: 'Building rounds missed 2 times this shift' })
+  })
+
+  test('a walk is timed against its own slot, not against the last one', async () => {
     const { t, as, buildingId, worker } = await setup()
 
+    // Nothing walked for five hours. Measured as a stopwatch that is three
+    // hours past due on a two-hourly round; measured as a slot, the walk
+    // happening now is simply this period's walk.
     await t.run(async (ctx) => {
       await ctx.db.insert('routineCompletions', {
         buildingId,
@@ -142,9 +213,15 @@ describe('logging a round', () => {
     const result = await as(worker).mutation(api.routines.complete, {
       buildingId,
       routine: 'perimeter',
+      tzOffsetMinutes: TZ,
     })
-    // Due every 2 hours, last walked 5 hours ago — three hours past due.
-    expect(result.minutesLate).toBeGreaterThanOrEqual(179)
+
+    // Perimeter runs every 2 hours, so a slot is 120 minutes and no walk inside
+    // one can be more than that far into it — however long the gap before it.
+    expect(result.slotStartMinutes).not.toBeNull()
+    expect(result.slotStartMinutes! % 120).toBe(0)
+    expect(result.minutesIntoSlot).toBeGreaterThanOrEqual(0)
+    expect(result.minutesIntoSlot).toBeLessThan(120)
 
     // What was stored is what was returned — the row carries the figure rather
     // than leaving it to be worked out again against a frequency that may since
@@ -158,7 +235,7 @@ describe('logging a round', () => {
         .order('desc')
         .first(),
     )
-    expect(stored!.minutesLate).toBe(result.minutesLate)
+    expect(stored!.minutesLate ?? 0).toBe(result.minutesIntoSlot)
   })
 
   test('a round the site has switched off cannot be logged', async () => {
@@ -174,10 +251,10 @@ describe('logging a round', () => {
     })
 
     await expect(
-      as(worker).mutation(api.routines.complete, { buildingId, routine: 'perimeter' }),
+      as(worker).mutation(api.routines.complete, { buildingId, routine: 'perimeter', tzOffsetMinutes: TZ }),
     ).rejects.toThrow(/turned off/)
 
-    const board = await as(worker).query(api.routines.board, { buildingId, now: Date.now() })
+    const board = await as(worker).query(api.routines.board, { buildingId, now: Date.now(), tzOffsetMinutes: TZ })
     expect(board!.rows.map((r) => r.routine)).not.toContain('perimeter')
     expect(board!.rows.find((r) => r.routine === 'rounds')!.everyMinutes).toBe(90)
   })
@@ -231,10 +308,10 @@ describe('the notification feed', () => {
     })
 
     const now = Date.now()
-    const deskFeed = await as(worker).query(api.notifications.feed, { buildingId, now })
+    const deskFeed = await as(worker).query(api.notifications.feed, { buildingId, now, tzOffsetMinutes: TZ })
     expect(deskFeed!.rows.some((r) => r.kind === 'rent')).toBe(false)
 
-    const managerFeed = await as(manager).query(api.notifications.feed, { buildingId, now })
+    const managerFeed = await as(manager).query(api.notifications.feed, { buildingId, now, tzOffsetMinutes: TZ })
     expect(managerFeed!.rows.find((r) => r.kind === 'rent')).toMatchObject({
       severity: 'med',
       key: `rent:${tenantId}`,
@@ -253,7 +330,7 @@ describe('the notification feed', () => {
       }),
     )
 
-    const feed = await as(worker).query(api.notifications.feed, { buildingId, now: Date.now() })
+    const feed = await as(worker).query(api.notifications.feed, { buildingId, now: Date.now(), tzOffsetMinutes: TZ })
     expect(feed!.rows.find((r) => r.key === `need:${needId}`)).toMatchObject({
       severity: 'high',
       href: `/tenants/${tenantId}`,
@@ -263,7 +340,7 @@ describe('the notification feed', () => {
       await ctx.db.patch(needId, { resolvedAt: Date.now() })
     })
 
-    const after = await as(worker).query(api.notifications.feed, { buildingId, now: Date.now() })
+    const after = await as(worker).query(api.notifications.feed, { buildingId, now: Date.now(), tzOffsetMinutes: TZ })
     expect(after!.rows.some((r) => r.key === `need:${needId}`)).toBe(false)
   })
 
@@ -271,13 +348,13 @@ describe('the notification feed', () => {
     const { as, buildingId, worker } = await setup()
     const now = Date.now()
 
-    const before = await as(worker).query(api.notifications.feed, { buildingId, now })
+    const before = await as(worker).query(api.notifications.feed, { buildingId, now, tzOffsetMinutes: TZ })
     const keys = before!.rows.map((r) => r.key)
     expect(before!.unread).toBe(keys.length)
 
     await as(worker).mutation(api.notifications.markRead, { keys })
 
-    const after = await as(worker).query(api.notifications.feed, { buildingId, now })
+    const after = await as(worker).query(api.notifications.feed, { buildingId, now, tzOffsetMinutes: TZ })
     expect(after!.rows).toHaveLength(keys.length)
     expect(after!.unread).toBe(0)
     expect(after!.rows.every((r) => r.read)).toBe(true)
@@ -287,54 +364,58 @@ describe('the notification feed', () => {
     const { as, buildingId, worker, manager } = await setup()
     const now = Date.now()
 
-    const feed = await as(worker).query(api.notifications.feed, { buildingId, now })
+    const feed = await as(worker).query(api.notifications.feed, { buildingId, now, tzOffsetMinutes: TZ })
     await as(worker).mutation(api.notifications.markRead, {
       keys: feed!.rows.map((r) => r.key),
     })
 
-    const theirs = await as(manager).query(api.notifications.feed, { buildingId, now })
+    const theirs = await as(manager).query(api.notifications.feed, { buildingId, now, tzOffsetMinutes: TZ })
     expect(theirs!.unread).toBeGreaterThan(0)
   })
 
-  test('a round marked read comes back when it next falls due', async () => {
+  test('dismissing “due this hour” does not also dismiss “you missed it”', async () => {
     const { t, as, buildingId, worker } = await setup()
-    const start = Date.now()
+    const at = (h: number, m = 0) => Date.UTC(2026, 8, 4, h, m)
 
-    // The completions are written directly so their times are ours to choose —
-    // going through the mutation twice inside one test stamps both with the
-    // same millisecond, which is exactly the case this test must not hit.
-    const walk = async (at: number) =>
-      await t.run(async (ctx) => {
-        await ctx.db.insert('routineCompletions', {
-          buildingId,
-          routine: 'rounds',
-          completedAt: at,
-        })
+    // 8am walked, so the shift opens clean and the 9am slot is the live one.
+    await t.run(async (ctx) => {
+      await ctx.db.insert('routineCompletions', {
+        buildingId,
+        routine: 'rounds',
+        completedAt: at(8, 10),
       })
+    })
 
-    await walk(start)
     const due = await as(worker).query(api.notifications.feed, {
       buildingId,
-      now: start + 2 * HOUR,
+      now: at(9, 30),
+      tzOffsetMinutes: TZ,
     })
     const key = due!.rows.find((r) => r.key.startsWith('routine:rounds'))!.key
+    expect(key).toBe(`routine:rounds:${at(9)}`)
 
     await as(worker).mutation(api.notifications.markRead, { keys: [key] })
     const read = await as(worker).query(api.notifications.feed, {
       buildingId,
-      now: start + 2 * HOUR,
+      now: at(9, 30),
+      tzOffsetMinutes: TZ,
     })
     expect(read!.rows.find((r) => r.key === key)!.read).toBe(true)
 
-    // Walked again three hours later; the round that falls due after *that* is
-    // a new notification, not the one already dismissed this morning.
-    await walk(start + 3 * HOUR)
-    const nextDue = await as(worker).query(api.notifications.feed, {
+    /*
+       An hour on, that same 9am slot has ended unwalked. "It is due" and "it
+       was missed" are different statements about the same hour, and waving away
+       the first must not silently swallow the second — that is precisely the
+       gap somebody needs told about at handover.
+    */
+    const later = await as(worker).query(api.notifications.feed, {
       buildingId,
-      now: start + 5 * HOUR,
+      now: at(10, 30),
+      tzOffsetMinutes: TZ,
     })
-    const next = nextDue!.rows.find((r) => r.key.startsWith('routine:rounds'))!
-    expect(next.key).not.toBe(key)
+    const next = later!.rows.find((r) => r.key.startsWith('routine:rounds'))!
+    expect(next.key).toBe(`routine:rounds:missed:${at(9)}`)
+    expect(next.severity).toBe('high')
     expect(next.read).toBe(false)
   })
 
@@ -356,7 +437,7 @@ describe('the notification feed', () => {
       })
     })
 
-    const feed = await as(worker).query(api.notifications.feed, { buildingId, now: Date.now() })
+    const feed = await as(worker).query(api.notifications.feed, { buildingId, now: Date.now(), tzOffsetMinutes: TZ })
     const row = feed!.rows.find((r) => r.kind === 'visitor')!
     expect(row.severity).toBe('high')
     expect(row.title).toContain('Ray Okafor')
@@ -375,11 +456,11 @@ describe('the notification feed', () => {
     )
 
     await expect(
-      as(worker).query(api.notifications.feed, { buildingId: elsewhere, now: Date.now() }),
+      as(worker).query(api.notifications.feed, { buildingId: elsewhere, now: Date.now(), tzOffsetMinutes: TZ }),
     ).rejects.toThrow(/not assigned/)
 
     await expect(
-      as(worker).mutation(api.routines.complete, { buildingId: elsewhere, routine: 'rounds' }),
+      as(worker).mutation(api.routines.complete, { buildingId: elsewhere, routine: 'rounds', tzOffsetMinutes: TZ }),
     ).rejects.toThrow(/not assigned/)
   })
 })
