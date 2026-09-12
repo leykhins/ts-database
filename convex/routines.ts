@@ -221,6 +221,24 @@ export const board = query({
       )
       .collect()
 
+    /*
+       How many residents the medication round is actually for.
+
+       `careRxProgram` is the managed-pharmacy flag captured at intake, which is
+       the closest thing on file to "staff dispense for this person". It is a
+       proxy, not a schedule: it cannot say a dose falls at 8pm rather than
+       noon. When per-resident medication records exist this becomes a count of
+       doses due in the slot, and only this block changes.
+    */
+    const onMedications = (
+      await ctx.db
+        .query('tenants')
+        .withIndex('by_building_status', (q) =>
+          q.eq('buildingId', building._id).eq('status', 'current'),
+        )
+        .collect()
+    ).filter((t) => t.health?.careRxProgram === true).length
+
     const settings = await routinesFor(ctx, building._id)
     const rows = await Promise.all(
       settings
@@ -253,6 +271,8 @@ export const board = query({
             done: slots.filter((x) => x.status === 'done').length,
             missed: slots.filter((x) => x.status === 'missed').length,
             total: slots.length,
+            /** Residents the round is for. Null where the round is the building. */
+            subjectCount: s.routine === 'meds' ? onMedications : null,
             // No rolling due-state here. The slots carry it, and shipping both
             // invites two answers to "is this late" that can disagree.
           }

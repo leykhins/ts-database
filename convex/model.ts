@@ -213,7 +213,9 @@ export const DUTIES: Record<string, { title: string; icon: string; accent: strin
     icon: 'route',
     accent: 'blue',
     items: [
-      { key: 'rounds', label: 'Rounds — building & grounds', meta: 'Every 30 minutes', icon: 'route' },
+      // No rounds item. Building rounds and the perimeter are logged by walking
+      // them — see `routines.ts` — and a checkbox beside that record is a second
+      // place to claim the same work, which is how the two come to disagree.
       { key: 'harm-reduction', label: 'Harm-reduction room restock', meta: 'Restock and clean', icon: 'shield-check' },
       { key: 'lobby', label: 'Lobby & amenity areas', meta: 'Sweep / mop', icon: 'home' },
       { key: 'bathrooms', label: 'Staff & shared bathrooms', meta: 'Due this shift', icon: 'door' },

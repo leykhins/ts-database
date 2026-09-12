@@ -258,6 +258,22 @@ a:hover {
   to { transform: rotate(360deg); }
 }
 
+@keyframes ts-pulse {
+  50% { opacity: 0.35; }
+}
+
+/**
+ * A slow breath on a status dot, for the one hour a round is actually inside.
+ *
+ * Opacity only — the design system forbids movement on anything that is not
+ * arriving or leaving, and this is neither: it is a thing that is *ongoing*.
+ * Two seconds, because a fast pulse on a screen somebody stands in front of
+ * all shift is an irritation rather than information.
+ */
+.ts-pulse {
+  animation: ts-pulse 2s var(--ease-in-out, ease-in-out) infinite;
+}
+
 /**
  * A light sweeping across a placeholder. Reads as "loading" where a pulse
  * reads as "broken", and it is neutral rather than brand-tinted so a screen

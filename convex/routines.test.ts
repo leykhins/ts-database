@@ -346,10 +346,13 @@ describe('the notification feed', () => {
 
   test('marking read does not remove the item, only the badge', async () => {
     const { as, buildingId, worker } = await setup()
-    const now = Date.now()
+    // Fixed, and asserted non-empty: on a wall clock this test passes without
+    // checking anything the moment the feed happens to be empty.
+    const now = Date.UTC(2026, 8, 4, 10, 30)
 
     const before = await as(worker).query(api.notifications.feed, { buildingId, now, tzOffsetMinutes: TZ })
     const keys = before!.rows.map((r) => r.key)
+    expect(keys.length).toBeGreaterThan(0)
     expect(before!.unread).toBe(keys.length)
 
     await as(worker).mutation(api.notifications.markRead, { keys })
@@ -362,9 +365,20 @@ describe('the notification feed', () => {
 
   test('read state is per person', async () => {
     const { as, buildingId, worker, manager } = await setup()
-    const now = Date.now()
+
+    /*
+       A fixed clock, not `Date.now()`.
+
+       Rounds are answered in slots now, so whether the feed has anything in it
+       depends on where in the shift "now" falls — at 8:05am nothing is missed
+       and nothing is yet late, and this test would quietly assert that two
+       empty feeds differ. 10:30 is two hours into the morning shift, so the
+       8am and 9am rounds are unambiguously missed.
+    */
+    const now = Date.UTC(2026, 8, 4, 10, 30)
 
     const feed = await as(worker).query(api.notifications.feed, { buildingId, now, tzOffsetMinutes: TZ })
+    expect(feed!.rows.length).toBeGreaterThan(0)
     await as(worker).mutation(api.notifications.markRead, {
       keys: feed!.rows.map((r) => r.key),
     })
