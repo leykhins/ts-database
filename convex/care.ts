@@ -32,7 +32,14 @@ import {
 const LEVEL_WEIGHT = { independent: 1, moderate: 2, high: 3, critical: 4 } as const
 
 /** How many consecutive shift segments without a check makes a resident flagged. */
-const FLAG_AFTER_SEGMENTS = 2
+/**
+ * Three segments — a full day — before a resident is called missing.
+ *
+ * Two was 16 hours, which catches somebody who was simply out yesterday
+ * evening and asleep overnight. A day of nobody laying eyes on a person is a
+ * different claim, and it is the one the Care Console's tab now makes in words.
+ */
+const FLAG_AFTER_SEGMENTS = 3
 
 /** Segments to look back over when deciding who has fallen off the round. */
 const LOOKBACK_SEGMENTS = 4
@@ -40,6 +47,14 @@ const LOOKBACK_SEGMENTS = 4
 type Occupant = {
   tenant: Doc<'tenants'>
   room: Doc<'rooms'> | undefined
+}
+
+/** How loudly a log entry should speak at handover. Higher goes first. */
+function rankEntry(entry: Doc<'shiftLogEntries'>): number {
+  if (entry.significant) return 3
+  if (entry.emergencyServices || entry.evacuated) return 2
+  if (entry.log === 'event') return 1
+  return 0
 }
 
 /** The `LOOKBACK_SEGMENTS` segments ending with the live one, newest first. */
@@ -301,14 +316,37 @@ export const overview = query({
           .collect()
       : []
 
-    // ---- Recent handovers ----
+    /* ---- Recent handovers ------------------------------------------------
+
+       The shift you are taking over from, not "the last three reports".
+       Whoever is starting has one question — what happened in the eight hours
+       before I walked in — and a list spanning yesterday answers a question
+       nobody asked. Everything else is a click away on /care/reports.
+
+       Falls back to the most recent submitted reports when the previous shift
+       filed nothing, because an empty card reads as "nothing happened" rather
+       than "nobody wrote it up", and those are opposite meanings at handover.
+    */
     const recentReports = await ctx.db
       .query('shiftReports')
       .withIndex('by_building_started', (q) => q.eq('buildingId', buildingId))
       .order('desc')
       .take(12)
 
-    const submitted = recentReports.filter((r) => r.status === 'submitted').slice(0, 3)
+    const allSubmitted = recentReports.filter((r) => r.status === 'submitted')
+
+    // `segments` is newest-first ending with the live one, so [1] is the shift
+    // being handed over from — already resolved for the board, day rollover and
+    // all, rather than worked out a second way here.
+    const previous = segments[1]
+    const fromPrevious = previous
+      ? allSubmitted.filter(
+          (r) => r.shiftKey === previous.key && r.shiftDate === previous.shiftDate,
+        )
+      : []
+
+    const submitted = (fromPrevious.length ? fromPrevious : allSubmitted).slice(0, 3)
+    const handoverIsPrevious = fromPrevious.length > 0
     const authors = await Promise.all(submitted.map((r) => ctx.db.get(r.authorId)))
     const entriesByReport = await Promise.all(
       submitted.map((r) =>
@@ -362,6 +400,11 @@ export const overview = query({
         entryCount: draftEntries.length,
         significantCount: draftEntries.filter((e) => e.significant).length,
       },
+      /** True when `reports` is the shift being handed over from, not a fallback. */
+      handoverIsPrevious,
+      previousShift: segments[1]
+        ? { label: segments[1]!.label, hours: segments[1]!.hours }
+        : null,
       reports: submitted.map((r, i) => ({
         _id: r._id,
         shiftKey: r.shiftKey,
@@ -378,6 +421,28 @@ export const overview = query({
         events: (entriesByReport[i] ?? []).filter((x) => x.log === 'event').length,
         significant: (entriesByReport[i] ?? []).some((x) => x.significant),
         cameraReview: (entriesByReport[i] ?? []).some((x) => x.cameraReview),
+        /*
+           What the next shift has to be told, worst first.
+
+           Ordered by consequence rather than by clock: anything flagged
+           significant, then a site event that pulled in fire, police or
+           ambulance, then the rest of the events, then ordinary interactions.
+           A handover read chronologically buries the fire alarm under three
+           welfare knocks that happened after it.
+        */
+        highlights: [...(entriesByReport[i] ?? [])]
+          .sort((a, b) => rankEntry(b) - rankEntry(a) || b.occurredAt - a.occurredAt)
+          .slice(0, 3)
+          .map((x) => ({
+            _id: x._id,
+            log: x.log ?? 'interaction',
+            kind: x.kind,
+            comments: x.comments,
+            significant: x.significant,
+            emergencyServices: x.emergencyServices ?? false,
+            evacuated: x.evacuated ?? false,
+            occurredAt: x.occurredAt,
+          })),
         radioCheck: r.radioCheck ?? false,
         handover: r.handover ?? false,
         readPrevious: r.readPrevious ?? false,

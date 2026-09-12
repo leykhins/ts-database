@@ -50,4 +50,19 @@ const crons = cronJobs()
 // app is likely to run, and after month-end has definitely passed.
 crons.cron('post monthly rent', '0 6 1 * *', internal.crons.postMonthlyRent, {})
 
+/*
+   Demo activity, on deployments that opt in.
+
+   `simulate.tick` returns immediately unless `DEMO_SIMULATION=1` is set on the
+   deployment, so registering the cron here is harmless everywhere else — the
+   gate lives in the function rather than in this schedule, because a cron that
+   exists only on some deployments is a difference nobody can see from the code.
+
+   Fifteen minutes: fast enough that a shift visibly fills in while somebody is
+   looking at it, slow enough to stay far inside Convex's scheduling budget.
+*/
+crons.interval('simulate demo activity', { minutes: 15 }, internal.simulate.tick, {
+  tzOffsetMinutes: 420,
+})
+
 export default crons
