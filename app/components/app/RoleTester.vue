@@ -48,7 +48,7 @@ async function pick(role: RoleValue | null) {
         :class="
           me.simulating
             ? 'border-[var(--amber-500)]/40 bg-[var(--amber-500)]/15 hover:bg-[var(--amber-500)]/25'
-            : 'border-white/10 bg-white/[0.04] hover:bg-white/10'
+            : 'border-sidebar-border bg-sidebar-accent hover:border-[var(--border-hover)]'
         "
         :disabled="pending"
       >
@@ -61,7 +61,7 @@ async function pick(role: RoleValue | null) {
           <span class="block text-[10px] uppercase tracking-[0.08em] text-sidebar-foreground">
             {{ me.simulating ? 'Testing as' : 'View as' }}
           </span>
-          <span class="block truncate text-xs font-semibold text-white">
+          <span class="block truncate text-xs font-semibold text-sidebar-accent-foreground">
             {{ me.roleLabel }}
           </span>
         </span>

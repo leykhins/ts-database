@@ -23,9 +23,11 @@ const props = withDefaults(
     :as-child="asChild"
     :class="cn(badgeVariants({ variant }), props.class)"
   >
+    <!-- `currentColor`: the dot is the tone, and the tone is now carried by
+         the text colour rather than by a separate hue variable. -->
     <span
       v-if="dot"
-      class="size-[5px] shrink-0 rounded-full bg-[var(--tone)]"
+      class="size-[5px] shrink-0 rounded-full bg-current"
     />
     <slot />
   </Primitive>

@@ -321,7 +321,7 @@ const TEXTAREA_CLASS =
                     :class="
                       health[field.key] === option.value
                         ? option.value === 'yes'
-                          ? 'bg-[var(--rose-600)] text-white'
+                          ? 'bg-[var(--rose-600)] text-[var(--text-on-accent)]'
                           : option.value === 'no'
                             ? 'bg-card text-[var(--text-strong)]'
                             : 'bg-card text-muted-foreground'
@@ -368,9 +368,9 @@ const TEXTAREA_CLASS =
                   type="button"
                   class="cursor-pointer rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
                   :class="{
-                    'bg-[var(--green-600)] text-white': flags[field.key] === option.value && option.value === 'green',
-                    'bg-[var(--amber-600)] text-white': flags[field.key] === option.value && option.value === 'amber',
-                    'bg-[var(--red-600)] text-white': flags[field.key] === option.value && option.value === 'red',
+                    'bg-[var(--green-600)] text-[var(--text-on-accent)]': flags[field.key] === option.value && option.value === 'green',
+                    'bg-[var(--amber-600)] text-[var(--text-on-accent)]': flags[field.key] === option.value && option.value === 'amber',
+                    'bg-[var(--red-600)] text-[var(--text-on-accent)]': flags[field.key] === option.value && option.value === 'red',
                     'bg-card text-[var(--text-strong)]': flags[field.key] === option.value && option.value === 'none',
                     'text-muted-foreground': flags[field.key] !== option.value,
                   }"

@@ -192,7 +192,7 @@ function subtitle(building: Building): string {
                 class="inline-flex size-9 shrink-0 items-center justify-center rounded-sm"
                 :class="
                   chosen === building._id
-                    ? 'bg-[var(--brand)] text-white'
+                    ? 'bg-[var(--brand)] text-[var(--text-on-accent)]'
                     : 'bg-[var(--surface-sunken)] text-muted-foreground'
                 "
               >

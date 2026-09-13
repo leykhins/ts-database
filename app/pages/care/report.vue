@@ -457,7 +457,7 @@ const TEXTAREA_CLASS =
               :class="entry.significant ? 'bg-[var(--danger-soft)]' : 'bg-[var(--surface-sunken)]'"
             >
               <span
-                class="tnum inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-xs font-bold text-white"
+                class="tnum inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-xs font-bold text-[var(--text-on-accent)]"
                 :style="{ background: entry.significant ? 'var(--danger)' : 'var(--slate-600)' }"
               >
                 {{ i + 1 }}
@@ -795,7 +795,7 @@ const TEXTAREA_CLASS =
                     name="check"
                     :size="15"
                     :stroke-width="2.6"
-                    class="text-white"
+                    class="text-[var(--text-on-accent)]"
                   />
                 </button>
                 <span class="min-w-0 flex-1">

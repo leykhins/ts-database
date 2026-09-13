@@ -83,7 +83,7 @@ function toggle(id: Id<'tenants'>) {
     </div>
 
     <!-- The roster, searchable, faces first -->
-    <div class="overflow-hidden rounded-md border border-[var(--border-strong)]">
+    <div class="overflow-hidden rounded-md border border-[var(--border-strong)] transition-[border-color,box-shadow] focus-within:border-[var(--border-focus)] focus-within:shadow-[var(--focus-ring)]">
       <div class="relative border-b border-[var(--border-subtle)]">
         <span
           class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground"
@@ -124,7 +124,7 @@ function toggle(id: Id<'tenants'>) {
               name="check"
               :size="12"
               :stroke-width="3"
-              class="text-white"
+              class="text-[var(--text-on-accent)]"
             />
           </span>
 

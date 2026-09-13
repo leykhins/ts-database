@@ -29,6 +29,7 @@ import type * as seed from "../seed.js";
 import type * as services from "../services.js";
 import type * as settings from "../settings.js";
 import type * as shiftReports from "../shiftReports.js";
+import type * as shifts from "../shifts.js";
 import type * as simulate from "../simulate.js";
 import type * as support from "../support.js";
 import type * as tenants from "../tenants.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   services: typeof services;
   settings: typeof settings;
   shiftReports: typeof shiftReports;
+  shifts: typeof shifts;
   simulate: typeof simulate;
   support: typeof support;
   tenants: typeof tenants;

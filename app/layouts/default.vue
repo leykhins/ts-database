@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
+import { SHIFTS, shiftAt } from '../../convex/shifts'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -25,7 +26,7 @@ import {
 } from '@/components/ui/sidebar'
 
 /**
- * App shell — dark sidebar, sticky topbar, one content column.
+ * App shell — pale sage rail, sticky topbar, one white working column.
  *
  * Sidebar counts come from the same dashboard subscription the home screen
  * uses, so a rent posted on one screen updates the badge on every other.
@@ -122,6 +123,60 @@ function isActive(to: string, exact = false): boolean {
 const search = ref('')
 const passwordOpen = ref(false)
 
+const { isDark, toggle } = useColorMode()
+
+/**
+ * The date and the live shift, side by side in the nav.
+ *
+ * Both come off the app's shared clock, so a tab left open across midnight or
+ * across a handover rolls over rather than showing yesterday's date and the
+ * shift that ended two hours ago. The shift schedule is imported rather than
+ * queried — it is policy, not data, and `convex/shifts.ts` is the same file
+ * the server resolves it with.
+ *
+ * The building is deliberately not named here. It is already the first thing
+ * in the rail and the first crumb in the trail, and printing it a third time
+ * pushed the one piece of context that changes during a day — the shift —
+ * into the smallest text on the screen.
+ */
+const nowMs = useNow()
+const todayIso = computed(() => new Date(nowMs.value).toISOString().slice(0, 10))
+const weekday = computed(() =>
+  new Date(nowMs.value).toLocaleDateString(undefined, { weekday: 'long' }),
+)
+const shortDate = computed(() =>
+  new Date(nowMs.value).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }),
+)
+
+const shift = computed(() => {
+  const { key } = shiftAt(nowMs.value, new Date().getTimezoneOffset())
+  return SHIFTS.find((s) => s.key === key) ?? SHIFTS[2]!
+})
+
+/**
+ * How tall the nav actually is, published as `--nav-h`.
+ *
+ * Anything else that sticks — the resident record's bio column, an in-page
+ * anchor's scroll offset — has to clear it, and the height is not a constant:
+ * two bands on a wide screen, three rows on a narrow one, and the context line
+ * comes and goes with the page. Measured rather than guessed, because a
+ * hard-coded number is wrong on exactly the screens nobody tests on.
+ */
+const navEl = ref<HTMLElement | null>(null)
+onMounted(() => {
+  if (!navEl.value) return
+  const observer = new ResizeObserver(([entry]) => {
+    const height = entry?.borderBoxSize?.[0]?.blockSize ?? entry?.contentRect.height ?? 0
+    document.documentElement.style.setProperty('--nav-h', `${Math.round(height)}px`)
+  })
+  observer.observe(navEl.value)
+  onScopeDispose(() => observer.disconnect())
+})
+
 /**
  * The topbar is flat until the page scrolls under it, then it takes a border.
  * A sticky bar that always looks lifted is decoration; one that responds is
@@ -188,10 +243,10 @@ function submitSearch(value: string) {
     <Sidebar collapsible="icon">
       <SidebarHeader class="gap-2.5 p-3">
         <NuxtLink :to="homeFor(isFrontline)" class="flex items-center px-1 pt-1 group-data-[collapsible=icon]:hidden">
-          <img src="/logo-wordmark-dark.svg" alt="TS Database" height="28" class="h-7 w-auto" >
+          <TsBrandMark class="text-sidebar-accent-foreground" :size="28" />
         </NuxtLink>
         <NuxtLink :to="homeFor(isFrontline)" class="hidden justify-center group-data-[collapsible=icon]:flex">
-          <img src="/logo-mark.svg" alt="TS Database" class="size-7" >
+          <TsBrandMark compact :size="28" />
         </NuxtLink>
 
         <!-- Building switcher -->
@@ -199,15 +254,15 @@ function submitSearch(value: string) {
           <DropdownMenuTrigger as-child>
             <button
               type="button"
-              class="flex w-full cursor-pointer items-center gap-2.5 rounded-md border border-white/10 bg-white/[0.06] p-2.5 text-left transition-colors hover:bg-white/10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2"
+              class="flex w-full cursor-pointer items-center gap-2.5 rounded-md border border-sidebar-border bg-sidebar-accent p-2.5 text-left transition-colors hover:border-[var(--border-hover)] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2"
             >
               <span
-                class="inline-flex size-[30px] shrink-0 items-center justify-center rounded-sm bg-[var(--emerald-500)] text-[#06281d]"
+                class="inline-flex size-[30px] shrink-0 items-center justify-center rounded-sm bg-[var(--brand)] text-[var(--text-on-accent)]"
               >
                 <DsIcon name="building-2" :size="17" :stroke-width="2.4" />
               </span>
               <span class="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-                <span class="block truncate text-sm font-semibold text-white">
+                <span class="block truncate text-sm font-semibold text-sidebar-accent-foreground">
                   {{ switcherLabel }}
                 </span>
                 <span v-if="currentBuilding" class="tnum block text-[11px] text-sidebar-foreground">
@@ -256,7 +311,7 @@ function submitSearch(value: string) {
                     :name="item.icon"
                     :size="19"
                     :stroke-width="isActive(item.to, item.exact) ? 2.4 : 2"
-                    :class="isActive(item.to, item.exact) && 'text-[var(--emerald-400)]'"
+                    :class="isActive(item.to, item.exact) && 'text-[var(--brand)]'"
                   />
                   <span>{{ item.label }}</span>
                 </NuxtLink>
@@ -283,7 +338,7 @@ function submitSearch(value: string) {
                     :name="item.icon"
                     :size="19"
                     :stroke-width="isActive(item.to) ? 2.4 : 2"
-                    :class="isActive(item.to) && 'text-[var(--emerald-400)]'"
+                    :class="isActive(item.to) && 'text-[var(--brand)]'"
                   />
                   <span>{{ item.label }}</span>
                 </NuxtLink>
@@ -299,7 +354,7 @@ function submitSearch(value: string) {
         <div class="flex items-center gap-2.5 px-1 py-0.5">
           <DsPersonAvatar :name="me?.name ?? 'Staff'" size="sm" status="online" />
           <span class="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-            <span class="block truncate text-xs font-semibold text-white">{{ me?.name ?? '—' }}</span>
+            <span class="block truncate text-xs font-semibold text-sidebar-accent-foreground">{{ me?.name ?? '—' }}</span>
             <span class="block text-[11px] text-sidebar-foreground">
               {{ me?.simulating ? me?.realRoleLabel : (me?.roleLabel ?? '') }}
             </span>
@@ -309,7 +364,7 @@ function submitSearch(value: string) {
             size="icon-sm"
             aria-label="Change password"
             title="Change password"
-            class="text-sidebar-foreground hover:bg-white/10 hover:text-white group-data-[collapsible=icon]:hidden"
+            class="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden"
             @click="passwordOpen = true"
           >
             <DsIcon name="key" :size="16" />
@@ -319,7 +374,7 @@ function submitSearch(value: string) {
             size="icon-sm"
             aria-label="Log out"
             title="Log out"
-            class="text-sidebar-foreground hover:bg-white/10 hover:text-white group-data-[collapsible=icon]:hidden"
+            class="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden"
             @click="handleSignOut"
           >
             <DsIcon name="log-out" :size="16" />
@@ -329,27 +384,82 @@ function submitSearch(value: string) {
     </Sidebar>
 
     <SidebarInset class="bg-background">
-      <header
-        class="sticky top-0 z-[var(--z-sticky)] flex h-[var(--topbar-h)] shrink-0 items-center gap-4 bg-card px-5 transition-[border-color,box-shadow] duration-[var(--dur-base)] ease-[var(--ease-out)] md:px-8 print:hidden"
-        :class="scrolled ? 'border-b border-border shadow-[var(--shadow-sm)]' : 'border-b border-transparent'"
+      <!--
+        The nav is two white bands, not one.
+
+        The top band is the shift's context on the left, the search dead centre
+        where it is the same distance from anywhere, and the page's own actions
+        beside the utility controls on the right. The band under it carries the
+        trail and the page name — orientation, which is a different job from
+        navigation and was crowding it when both shared a row.
+
+        Both bands sit in one sticky block so the second does not slide under
+        the first on scroll.
+      -->
+      <div
+        ref="navEl"
+        class="sticky top-0 z-[var(--z-sticky)] shrink-0 bg-card transition-shadow duration-[var(--dur-base)] ease-[var(--ease-out)] print:hidden"
+        :class="scrolled && 'shadow-[var(--shadow-sm)]'"
       >
-        <SidebarTrigger class="-ml-1" />
-        <div class="min-w-0">
-          <div v-if="header.eyebrow" class="eyebrow">{{ header.eyebrow }}</div>
-          <div class="truncate text-[17px] font-semibold text-[var(--text-strong)]">
-            {{ header.title }}
+        <header class="topbar">
+          <div class="topbar__context">
+            <SidebarTrigger class="-ml-1 shrink-0" />
+
+            <time class="topbar__date" :datetime="todayIso">
+              <strong>{{ weekday }}</strong>
+              <span>{{ shortDate }}</span>
+            </time>
+
+            <span class="topbar__rule" aria-hidden="true" />
+
+            <div class="topbar__shift">
+              <DsIcon :name="shift.icon" :size="15" class="shrink-0 text-[var(--brand)]" />
+              <span class="min-w-0">
+                <strong>{{ shift.label }}</strong>
+                <span>{{ shift.hours }}</span>
+              </span>
+              <span class="topbar__live" title="On shift now" />
+            </div>
           </div>
+
+          <!-- `width` is an inline style on the component, so the track's
+               width has to be handed to it rather than applied from here. -->
+          <DsSearchField
+            v-model="search"
+            placeholder="Search tenants, rooms, cheques…"
+            width="100%"
+            class="topbar__search"
+            @submit="submitSearch"
+          />
+
+          <div class="topbar__right">
+            <!--
+              Where a page puts its own controls. A page teleports into this
+              rather than rendering a row of buttons above its content, so the
+              primary action of every screen is in the same place.
+            -->
+            <div id="topbar-actions" class="topbar__actions" />
+            <div class="topbar__utilities">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+                :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+                @click="toggle"
+              >
+                <DsIcon :name="isDark ? 'sunrise' : 'moon'" :size="17" />
+              </Button>
+              <TsNotificationBell />
+            </div>
+          </div>
+        </header>
+
+        <div class="subbar">
+          <TsBreadcrumbs :building="currentBuilding?.name" />
+          <DsIcon name="chevron-right" :size="13" class="shrink-0 text-[var(--text-subtle)]" />
+          <h1 class="subbar__title">{{ header.title }}</h1>
         </div>
-        <div class="flex-1" />
-        <DsSearchField
-          v-model="search"
-          placeholder="Search tenants, rooms, cheques…"
-          :width="260"
-          class="hidden sm:flex"
-          @submit="submitSearch"
-        />
-        <TsNotificationBell />
-      </header>
+      </div>
 
       <div
         v-if="me?.simulating"
@@ -371,7 +481,11 @@ function submitSearch(value: string) {
         </Button>
       </div>
 
-      <main class="mx-auto w-full max-w-[var(--content-max)] flex-1 p-5 md:p-8">
+      <!-- Same width and inline padding as the topbar and subbar above, so the
+           page's edges line up with the bar's contents. A centred max-width
+           column left a gutter the bar did not have, and the two edges drifted
+           apart as the window widened. -->
+      <main class="w-full flex-1 p-5 md:p-8">
         <slot />
       </main>
     </SidebarInset>
@@ -387,3 +501,161 @@ function submitSearch(value: string) {
     />
   </SidebarProvider>
 </template>
+
+<style scoped>
+/* ---- Band one: navigation ---- */
+.topbar {
+  display: grid;
+  /* Context, search, actions. The middle track is fixed-width and the outer
+     two are equal, which is what actually centres the search — `1fr auto 1fr`
+     centres it only while both sides happen to weigh the same. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px) minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  min-height: 86px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar__context {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* Date and shift read as two stacked pairs side by side: the bold line is
+   what you want at a glance, the quiet line underneath is the detail you
+   only need when you go looking for it. */
+.topbar__date,
+.topbar__shift > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.topbar__date strong,
+.topbar__shift strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__date > span,
+.topbar__shift > span > span {
+  display: block;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.topbar__rule {
+  width: 1px;
+  height: 26px;
+  flex-shrink: 0;
+  background: var(--border);
+}
+
+.topbar__shift {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topbar__live {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.topbar__search {
+  width: 100%;
+  min-width: 0;
+}
+
+.topbar__right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  min-width: 0;
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.topbar__utilities {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ---- Band two: orientation ---- */
+/*
+  The trail and the page name sit on one line, at one size. The name was set
+  as a display heading and dominated a band whose whole job is to be glanceable
+  orientation — it is the same 11px as the crumbs now, and earns its place by
+  weight rather than by size.
+*/
+.subbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 11px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-card);
+}
+
+.subbar__title {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: var(--text-strong);
+}
+
+@media (min-width: 768px) {
+  .topbar,
+  .subbar {
+    padding-inline: 32px;
+  }
+}
+
+/*
+  Below two usable columns the grid stops helping: a 420px search between two
+  shrinking tracks squeezes all three. The bar becomes rows, and the search
+  takes the full width it needs rather than a third of it.
+*/
+@media (max-width: 900px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px 16px;
+    min-height: 0;
+  }
+
+  .topbar__search {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .subbar__title {
+    font-size: 18px;
+  }
+}
+</style>

@@ -43,7 +43,7 @@ async function markAll() {
         <DsIcon name="bell" :size="18" />
         <span
           v-if="unread > 0"
-          class="tnum absolute -top-1 -right-1 inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[var(--red-600)] px-1 text-[10px] font-bold text-white ring-2 ring-card"
+          class="tnum absolute -top-1 -right-1 inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[var(--red-600)] px-1 text-[10px] font-bold text-[var(--text-on-accent)] ring-2 ring-card"
           :aria-label="`${unread} unread`"
         >
           {{ unread > 9 ? '9+' : unread }}

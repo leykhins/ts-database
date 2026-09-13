@@ -43,7 +43,8 @@ button { font-family: inherit; }
 
 ::selection { background: var(--emerald-200); color: var(--emerald-950); }
 
-:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+/* Focus is styled once, in workspace.css. A second global rule here stacked a
+   box-shadow ring (and a forced radius) under that outline on every control. */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }

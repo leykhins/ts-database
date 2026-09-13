@@ -2,7 +2,6 @@
 import { api } from '../../../convex/_generated/api'
 import { formatMinutes } from '~/utils/format'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'vue-sonner'
 
@@ -33,8 +32,8 @@ const { mutate: complete } = useConvexMutation(api.routines.complete)
 const pending = ref<string | null>(null)
 
 const SLOT: Record<string, string> = {
-  done: 'border-transparent bg-[var(--emerald-600)] text-white',
-  missed: 'border-transparent bg-[var(--red-600)] text-white',
+  done: 'border-transparent bg-[var(--emerald-600)] text-[var(--text-on-accent)]',
+  missed: 'border-transparent bg-[var(--red-600)] text-[var(--text-on-accent)]',
   now: 'border-[var(--amber-600)] bg-[var(--amber-50)] font-bold text-[var(--amber-700)]',
   upcoming: 'border-[var(--border-subtle)] bg-[var(--surface-sunken)] text-[var(--text-subtle)]',
 }
@@ -86,13 +85,12 @@ async function log(routine: 'rounds' | 'perimeter' | 'meds', label: string) {
 </script>
 
 <template>
-  <Card>
-    <CardContent class="flex h-full flex-col gap-4 p-5">
-      <div class="flex items-baseline justify-between gap-2">
-        <span class="eyebrow">Running rounds</span>
-        <span v-if="data?.shift" class="text-xs text-muted-foreground">{{ data.shift.hours }}</span>
-      </div>
+  <DsPanel title="Running rounds" subtitle="Walked on the hour, logged as you go.">
+    <template #action>
+      <span v-if="data?.shift" class="text-xs text-muted-foreground">{{ data.shift.hours }}</span>
+    </template>
 
+    <div class="flex h-full flex-col gap-4">
       <div v-if="isLoading" class="flex flex-col gap-4">
         <div v-for="i in 3" :key="i" class="flex flex-col gap-2">
           <Skeleton class="h-3.5 w-40" />
@@ -167,7 +165,7 @@ async function log(routine: 'rounds' | 'perimeter' | 'meds', label: string) {
 
             <Button
               size="sm"
-              variant="ghost"
+              variant="soft"
               class="ml-auto h-6 px-2 text-xs"
               :loading="pending === row.routine"
               :disabled="!can('checks')"
@@ -180,6 +178,6 @@ async function log(routine: 'rounds' | 'perimeter' | 'meds', label: string) {
           </div>
         </div>
       </div>
-    </CardContent>
-  </Card>
+    </div>
+  </DsPanel>
 </template>

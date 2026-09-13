@@ -2,7 +2,6 @@
 import { api } from '../../convex/_generated/api'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 
 definePageMeta({ layout: 'auth' })
@@ -17,6 +16,7 @@ const username = ref('')
 const password = ref('')
 const error = ref('')
 const pending = ref(false)
+const showPassword = ref(false)
 
 /**
  * Sign-up exists for exactly one account: the first one on a fresh deployment,
@@ -100,113 +100,170 @@ async function submit() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <div class="flex justify-center">
-      <img src="/logo-wordmark.svg" alt="TS Database" class="h-[34px] w-auto" >
+  <div>
+    <span class="welcome-icon">
+      <DsIcon name="sunrise" :size="25" />
+    </span>
+
+    <h1 class="welcome-heading">
+      {{ mode === 'signIn' ? 'Good to have you here.' : 'Set up this deployment.' }}
+    </h1>
+    <p class="welcome-intro">
+      {{
+        mode === 'signIn'
+          ? 'Sign in to pick up where your team left off.'
+          : 'Create the administrator account for this building.'
+      }}
+    </p>
+
+    <form class="mt-8 flex flex-col gap-5" @submit.prevent="submit">
+      <Alert v-if="error" variant="danger">
+        <DsIcon name="alert-octagon" :size="17" :stroke-width="2" />
+        <AlertDescription>{{ error }}</AlertDescription>
+      </Alert>
+
+      <DsField v-if="mode === 'signUp'" v-slot="{ id }" label="Full name">
+        <Input :id="id" v-model="name" autocomplete="name" placeholder="Asha Okafor" class="h-11" />
+      </DsField>
+
+      <DsField
+        v-slot="{ id }"
+        label="Username"
+        required
+        :hint="mode === 'signUp' ? 'Lowercase letters, digits, dots and hyphens.' : undefined"
+      >
+        <Input
+          :id="id"
+          v-model="username"
+          type="text"
+          autocomplete="username"
+          autocapitalize="none"
+          spellcheck="false"
+          placeholder="Your username"
+          class="h-11"
+          required
+        />
+      </DsField>
+
+      <DsField
+        v-slot="{ id }"
+        label="Password"
+        required
+        :hint="mode === 'signUp' ? 'At least 8 characters.' : undefined"
+      >
+        <div class="relative">
+          <Input
+            :id="id"
+            v-model="password"
+            :type="showPassword ? 'text' : 'password'"
+            :autocomplete="mode === 'signIn' ? 'current-password' : 'new-password'"
+            placeholder="Your password"
+            class="h-11 pr-11"
+            required
+          />
+          <button
+            type="button"
+            class="absolute top-1.5 right-2 grid size-8 cursor-pointer place-items-center rounded-xs border-none bg-transparent text-muted-foreground hover:bg-[var(--surface-sunken)] hover:text-[var(--text-strong)]"
+            :aria-label="showPassword ? 'Hide password' : 'Show password'"
+            @click="showPassword = !showPassword"
+          >
+            <DsIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
+          </button>
+        </div>
+      </DsField>
+
+      <Alert v-if="mode === 'signUp'" variant="info">
+        <DsIcon name="shield-user" :size="17" :stroke-width="2" />
+        <AlertDescription>
+          This is the first account on this deployment, so it becomes the administrator.
+          Every account after it is created from Admin → Staff.
+        </AlertDescription>
+      </Alert>
+
+      <Button
+        type="submit"
+        variant="primary"
+        size="lg"
+        class="h-11 w-full justify-between"
+        :disabled="pending"
+      >
+        {{ pending ? 'Working…' : mode === 'signIn' ? 'Sign in' : 'Create account' }}
+        <DsIcon name="arrow-right" :size="17" />
+      </Button>
+
+      <button
+        v-if="needsBootstrap"
+        type="button"
+        class="cursor-pointer border-none bg-transparent p-0 text-center text-xs font-medium text-[var(--brand)] hover:underline hover:underline-offset-4"
+        @click="mode = mode === 'signIn' ? 'signUp' : 'signIn'"
+      >
+        {{
+          mode === 'signIn'
+            ? 'First account on a new deployment? Create the administrator'
+            : 'Already have an account? Sign in'
+        }}
+      </button>
+    </form>
+
+    <!--
+      Who to ask, rather than a self-serve route that does not exist: accounts
+      here are made by an administrator, and a "forgot password" link would be
+      a promise the product cannot keep.
+    -->
+    <div class="access-note">
+      <DsIcon name="users" :size="19" />
+      <p>
+        New to the team? Your administrator will<br class="hidden sm:inline" >
+        help you get set up.
+      </p>
     </div>
 
-    <Card>
-      <CardContent class="p-6">
-        <form class="flex flex-col gap-4" @submit.prevent="submit">
-          <div>
-            <h1 class="text-xl font-bold tracking-tight text-[var(--text-strong)]">
-              {{ mode === 'signIn' ? 'Sign in' : 'Create administrator account' }}
-            </h1>
-            <p class="mt-1 text-base text-muted-foreground">
-              {{
-                mode === 'signIn'
-                  ? 'Staff access to tenant records, rents and building checks.'
-                  : 'Set up the administrator account for this deployment.'
-              }}
-            </p>
-          </div>
-
-          <Alert v-if="error" variant="danger">
-            <DsIcon name="alert-octagon" :size="17" :stroke-width="2" />
-            <AlertDescription>{{ error }}</AlertDescription>
-          </Alert>
-
-          <DsField v-if="mode === 'signUp'" v-slot="{ id }" label="Full name">
-            <Input :id="id" v-model="name" autocomplete="name" placeholder="Asha Okafor" />
-          </DsField>
-
-          <DsField
-            v-slot="{ id }"
-            label="Username"
-            required
-            :hint="mode === 'signUp' ? 'Lowercase letters, digits, dots and hyphens.' : undefined"
-          >
-            <div class="relative">
-              <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground">
-                <DsIcon name="shield-user" :size="16" />
-              </span>
-              <Input
-                :id="id"
-                v-model="username"
-                type="text"
-                autocomplete="username"
-                autocapitalize="none"
-                spellcheck="false"
-                placeholder="asha.okafor"
-                class="pl-9"
-                required
-              />
-            </div>
-          </DsField>
-
-          <DsField
-            v-slot="{ id }"
-            label="Password"
-            required
-            :hint="mode === 'signUp' ? 'At least 8 characters.' : undefined"
-          >
-            <div class="relative">
-              <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground">
-                <DsIcon name="lock" :size="16" />
-              </span>
-              <Input
-                :id="id"
-                v-model="password"
-                type="password"
-                :autocomplete="mode === 'signIn' ? 'current-password' : 'new-password'"
-                class="pl-9"
-                required
-              />
-            </div>
-          </DsField>
-
-          <Alert v-if="mode === 'signUp'" variant="info">
-            <DsIcon name="shield-user" :size="17" :stroke-width="2" />
-            <AlertDescription>
-              This is the first account on this deployment, so it becomes the administrator.
-              Every account after it is created from Admin → Staff.
-            </AlertDescription>
-          </Alert>
-
-          <Button type="submit" variant="primary" size="lg" class="w-full" :disabled="pending">
-            {{ pending ? 'Working…' : mode === 'signIn' ? 'Sign in' : 'Create account' }}
-          </Button>
-
-          <button
-            v-if="needsBootstrap"
-            type="button"
-            class="cursor-pointer border-none bg-transparent p-0 text-center text-xs text-muted-foreground hover:text-[var(--text-strong)]"
-            @click="mode = mode === 'signIn' ? 'signUp' : 'signIn'"
-          >
-            {{
-              mode === 'signIn'
-                ? 'First account on a new deployment? Create the administrator'
-                : 'Already have an account? Sign in'
-            }}
-          </button>
-          <p v-else class="text-center text-xs text-muted-foreground">
-            Accounts are created by an administrator.
-          </p>
-        </form>
-
-        <!-- Development only; the whole chunk is dropped from a production build. -->
-        <component :is="AccountPicker" v-if="AccountPicker" @fill="fillTestAccount" />
-      </CardContent>
-    </Card>
+    <!-- Development only; the whole chunk is dropped from a production build. -->
+    <component :is="AccountPicker" v-if="AccountPicker" @fill="fillTestAccount" />
   </div>
 </template>
+
+<style scoped>
+.welcome-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 24px;
+  border-radius: 50%;
+  background: var(--surface-sunken);
+  color: var(--brand);
+}
+
+.welcome-heading {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -1.2px;
+  color: var(--text-strong);
+}
+
+.welcome-intro {
+  margin-top: 11px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.access-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 29px;
+  padding-top: 27px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.access-note p {
+  font-size: 10px;
+  line-height: 1.8;
+}
+</style>

@@ -41,8 +41,29 @@ const LEVEL_WEIGHT = { independent: 1, moderate: 2, high: 3, critical: 4 } as co
  */
 const FLAG_AFTER_SEGMENTS = 3
 
-/** Segments to look back over when deciding who has fallen off the round. */
-const LOOKBACK_SEGMENTS = 4
+/**
+ * Segments to look back over when deciding who has fallen off the round.
+ *
+ * Deliberately shorter than the segments the query reads. `segmentsMissed`
+ * counts up to this window and feeds the queue's weight, so widening it to
+ * suit the trend would quietly turn "missed 4" into "missed 9" and reorder who
+ * gets knocked on first.
+ */
+const FLAG_LOOKBACK_SEGMENTS = 4
+
+/** Points on the Wellness Index sparkline, the live segment last. */
+const TREND_POINTS = 8
+
+/**
+ * Segments read per query: the trend's points plus the one before the oldest,
+ * which that point needs for its "seen last segment" credit. Without it the
+ * first point of the sparkline would be scored harsher than the rest and the
+ * line would always open with a dip that never happened.
+ */
+const LOOKBACK_SEGMENTS = Math.max(FLAG_LOOKBACK_SEGMENTS, TREND_POINTS + 1)
+
+/** Short day names for trend labels; "Thu evening" stays unique across three days. */
+const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
 type Occupant = {
   tenant: Doc<'tenants'>
@@ -55,6 +76,42 @@ function rankEntry(entry: Doc<'shiftLogEntries'>): number {
   if (entry.emergencyServices || entry.evacuated) return 2
   if (entry.log === 'event') return 1
   return 0
+}
+
+/**
+ * Wellness Index for one segment, 0–100.
+ *
+ * The one formula behind both the live score and every sparkline point, so
+ * the line's last point cannot disagree with the number printed above it.
+ * A resident seen this segment scores in full; a critical resident unseen is a
+ * full miss whatever happened before; otherwise last segment's sighting earns
+ * most of the credit and nothing at all still earns a little, because one
+ * missed knock is not the same as nobody knowing where someone is.
+ */
+function wellnessScore(
+  occupants: Occupant[],
+  openNeedIds: Set<string>,
+  seenNow: Set<string>,
+  seenPrev: Set<string>,
+): number {
+  let points = 0
+  for (const { tenant } of occupants) {
+    const critical = openNeedIds.has(tenant._id)
+    if (seenNow.has(tenant._id)) points += 1
+    else if (critical) points += 0 // a critical resident unseen is a full miss
+    else if (seenPrev.has(tenant._id)) points += 0.7
+    else points += 0.3
+  }
+  return occupants.length ? Math.round((points / occupants.length) * 100) : 100
+}
+
+/** Tenants whose latest check in a segment found them — a "no answer" is not a sighting. */
+function seenIn(map: Map<string, Doc<'wellnessChecks'>> | undefined): Set<string> {
+  return new Set(
+    [...(map?.values() ?? [])]
+      .filter((check) => check.outcome === 'seen')
+      .map((check) => check.tenantId as string),
+  )
 }
 
 /** The `LOOKBACK_SEGMENTS` segments ending with the live one, newest first. */
@@ -151,8 +208,9 @@ export const overview = query({
           .collect(),
       )
 
-    // The lookback drives the flagged list: the live segment and the ones
-    // before it, however far back that reaches into yesterday.
+    // The lookback drives the flagged list and the Wellness Index trend: the
+    // live segment and the ones before it, however far back that reaches into
+    // previous days. Read once and sliced, not fetched again per consumer.
     const segmentMaps = await Promise.all(
       segments.map((segment) => readSegment(segment.shiftDate, segment.key)),
     )
@@ -186,6 +244,8 @@ export const overview = query({
             tenantId: tenant._id,
             name: tenant.name,
             room: room?.number ?? '—',
+            // The roster is read floor by floor, the way the round is walked.
+            floor: room?.floor ?? 'Unassigned',
             photoUrl: photos.get(tenant._id) ?? null,
             supportLevel: tenant.supportLevel,
             critical: openNeedIds.has(tenant._id),
@@ -222,7 +282,9 @@ export const overview = query({
         let lastSeenAt: number | null = null
         let lastOutcome: string | null = null
 
-        for (const map of segmentMaps) {
+        // Only the flag window, not everything read for the trend — see
+        // `FLAG_LOOKBACK_SEGMENTS` for what widening this would break.
+        for (const map of segmentMaps.slice(0, FLAG_LOOKBACK_SEGMENTS)) {
           const check = map.get(tenant._id)
           if (check?.outcome === 'seen') {
             lastSeenAt = check.completedAt
@@ -260,22 +322,33 @@ export const overview = query({
     const seenNow = new Set(
       live.checks.filter((c) => c.status === 'done').map((c) => c.tenantId as string),
     )
-    const previousMap = segmentMaps[1]
-    const seenPrev = new Set(
-      [...(previousMap?.values() ?? [])]
-        .filter((check) => check.outcome === 'seen')
-        .map((check) => check.tenantId as string),
-    )
+    const seenPrev = seenIn(segmentMaps[1])
+    const score = wellnessScore(occupants, openNeedIds, seenNow, seenPrev)
 
-    let points = 0
-    for (const { tenant } of occupants) {
-      const critical = openNeedIds.has(tenant._id)
-      if (seenNow.has(tenant._id)) points += 1
-      else if (critical) points += 0 // a critical resident unseen is a full miss
-      else if (seenPrev.has(tenant._id)) points += 0.7
-      else points += 0.3
-    }
-    const score = occupants.length ? Math.round((points / occupants.length) * 100) : 100
+    /*
+       The same index scored for each recent segment, oldest first.
+
+       Every point is scored against *today's* residents and *today's* open
+       critical needs — who lived here and who was critical on Tuesday is not
+       reconstructed. So a resident who moved in yesterday drags earlier points
+       down, and a need opened this morning makes last night look worse than it
+       was. Good enough to show a direction; not a record of past shifts.
+
+       The live point reuses `score` rather than rescoring segment 0, so the
+       line's last point is the headline number by construction.
+    */
+    const trendSegments = segments.slice(0, TREND_POINTS)
+    const wellnessTrend = trendSegments
+      .map((segment, i) => ({
+        label: `${WEEKDAY[new Date(`${segment.shiftDate}T00:00:00Z`).getUTCDay()]} ${segment.key}`,
+        shiftDate: segment.shiftDate,
+        score:
+          i === 0
+            ? score
+            : wellnessScore(occupants, openNeedIds, seenIn(segmentMaps[i]), seenIn(segmentMaps[i + 1])),
+      }))
+      .reverse()
+    const previousScore = wellnessTrend[wellnessTrend.length - 2]?.score
     const criticalUnseen = occupants
       .filter(({ tenant }) => openNeedIds.has(tenant._id) && !seenNow.has(tenant._id))
       .map(({ tenant, room }) => ({ tenantId: tenant._id, name: tenant.name, room: room?.number ?? '—' }))
@@ -376,6 +449,24 @@ export const overview = query({
         seen: seenNow.size,
         total: occupants.length,
       },
+      trend: {
+        wellness: wellnessTrend,
+        delta: previousScore === undefined ? null : score - previousScore,
+      },
+      /*
+         Counted the way the building report counts it, so the two screens
+         never show different numbers for the same site: occupied is current
+         residents, and a room out of service is neither available nor
+         occupied — it is somewhere nobody can be placed, not a vacancy.
+      */
+      occupancy: {
+        occupied: tenants.length,
+        units: building.units,
+        available: rooms.filter(
+          (r) => !r.outOfService && !tenants.some((t) => t.roomId === r._id),
+        ).length,
+        outOfService: rooms.filter((r) => r.outOfService).length,
+      },
       queue,
       flagged,
       critical: occupants
@@ -396,6 +487,13 @@ export const overview = query({
         dutyIcon: duties.icon,
         dutyAccent: duties.accent,
         dutyState: report?.duties ?? {},
+        // Counted against the role's list, not the stored map: a key left over
+        // from a duty since removed, or from testing as another role, would
+        // otherwise read as 6 of 5.
+        dutyProgress: {
+          done: duties.items.filter((d) => report?.duties?.[d.key]).length,
+          total: duties.items.length,
+        },
         reportId: report?._id ?? null,
         entryCount: draftEntries.length,
         significantCount: draftEntries.filter((e) => e.significant).length,

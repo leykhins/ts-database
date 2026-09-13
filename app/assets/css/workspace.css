@@ -1,0 +1,466 @@
+/* ============================================================
+   TS Database — Evergreen
+   ============================================================
+   The palette and type of the SupportOS "Evergreen" direction,
+   expressed as a retarget of the vendored token layer rather
+   than as a rewrite of it. Everything below re-points a token
+   the rest of the app already reads, so no screen has to know
+   the theme changed.
+
+   Imported last, after tokens/ and theme.css, so identical
+   selectors win on order.
+
+   Pine #365E4C · sage #EDF2EB · ink #293D34 · attention #A54F3D.
+   Bricolage Grotesque for headings, DM Sans for everything the
+   interface says.
+   ============================================================ */
+
+:root {
+  /* ---- Families ------------------------------------------------ */
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Bricolage Grotesque', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ---- Evergreen source colours -------------------------------- */
+  --pine: #365e4c;
+  --pine-deep: #2b4d3e;
+  --sage: #edf2eb;
+  --mist: #f7f9f6;
+  --evergreen-ink: #293d34;
+  --attention: #a54f3d;
+
+  /* ---- Surfaces ------------------------------------------------ */
+  --surface-app: var(--mist);
+  --surface-card: #ffffff;
+  --surface-sunken: var(--sage);
+  --surface-raised: #ffffff;
+  --surface-inverse: #24382d;
+  --surface-inverse-2: #2e4638;
+  --surface-hover: #eef3ec;
+  --surface-active: #e3ebe0;
+
+  /* ---- Text ---------------------------------------------------- */
+  --text-strong: var(--evergreen-ink);
+  --text-body: #3d5248;
+  --text-muted: #606d62;
+  --text-subtle: #82907f;
+  --text-on-brand: #ffffff;
+  --text-on-dark: #e7eee8;
+  --text-on-dark-muted: #a9b8ac;
+  /* A link inside prose is pine, not blue — the palette has one accent. */
+  --text-link: var(--pine);
+
+  /* ---- Lines --------------------------------------------------- */
+  --border: #e4e9e1;
+  --border-subtle: #eef2ec;
+  --border-strong: #d4ddce;
+  --border-hover: #c6d2c0;
+  --border-focus: var(--pine);
+  --divider: #e4e9e1;
+
+  /* ---- Brand --------------------------------------------------- */
+  --brand: var(--pine);
+  --brand-strong: var(--pine-deep);
+  --brand-soft: var(--sage);
+  --brand-soft-200: #dae5d6;
+  --brand-contrast: #ffffff;
+
+  /* ---- Status -------------------------------------------------- */
+  /* Explicit and quiet: a status says what it is in words, and the
+     colour only confirms it. Nothing here is allowed to alarm. */
+  --success: #427350;  --success-soft: #edf4e9;  --success-border: #d6e5d0;
+  --warning: #88601e;  --warning-soft: #faf3df;  --warning-border: #eadfbe;
+  --danger: var(--attention); --danger-soft: #fbefea; --danger-border: #eed8ce;
+  --info: #3f6472;     --info-soft: #eef4f5;     --info-border: #d5e3e5;
+
+  --ring: color-mix(in srgb, var(--pine) 28%, transparent);
+
+  /* Text on a *filled* accent block — a count bubble, a walked round, a
+     selected swatch. Hard-coded white worked only while every `--*-600` was
+     dark; in dark mode they are pastels and white on them is unreadable. */
+  --text-on-accent: #ffffff;
+
+  /* ---- Sign-in story panel -------------------------------------
+     The one surface in the product where colour covers a whole
+     field, so it owns its own names rather than borrowing --brand:
+     at night the brand becomes the *light* colour and a panel built
+     on it would invert into mint with near-white text on top. */
+  --auth-story-bg: var(--pine);
+  --auth-story-ink: #f1f6ef;
+  --auth-story-muted: #d0dfd0;
+  --auth-note-bg: #476b57;
+  --auth-note-border: #6f8b73;
+  --auth-art-line: #bed1b4;
+  --auth-art-fill: #6e8d73;
+  --auth-art-leaf: #b0c6a4;
+  --auth-art-sun: #dfd5a0;
+
+  /* ---- Category accents ---------------------------------------
+     Each functional area still owns a hue so people navigate by
+     colour, but every one is pulled toward the same earth the
+     palette lives on. Saturated originals made an Evergreen page
+     look like a chart legend. */
+  --teal-50: #eaf3f1;   --teal-100: #d3e6e1;  --teal-500: #3f7a70;  --teal-600: #356a61;  --teal-700: #2b564f;
+  --blue-50: #eef2f7;   --blue-100: #dae3ee;  --blue-500: #4d6a86;  --blue-600: #415b74;  --blue-700: #35495d;
+  --cyan-50: #eaf3f5;   --cyan-100: #d2e6ea;  --cyan-500: #3d7382;  --cyan-600: #346370;  --cyan-700: #2b505a;
+  --indigo-50: #f0f0f6; --indigo-100: #e0e0ee; --indigo-500: #5e5f86;  --indigo-600: #515274;  --indigo-700: #42435e;
+  --violet-50: #f2eff5; --violet-100: #e4dcec; --violet-500: #6f5a80;  --violet-600: #5f4d6e;  --violet-700: #4d3e59;
+  --rose-50: #fbefea;   --rose-100: #f2dcd3;  --rose-500: #b45a45;  --rose-600: var(--attention); --rose-700: #8b4132;
+  --amber-50: #faf3df;  --amber-100: #f0e4c1; --amber-500: #a2762a;  --amber-600: #88601e;  --amber-700: #6d4c17;
+
+  --green-50: #edf4e9;  --green-100: #d9e8d2; --green-500: #4d8159;  --green-600: #427350;  --green-700: #355c41;
+  --red-50: #fbefea;    --red-100: #f2dcd3;   --red-500: #b45a45;    --red-600: var(--attention); --red-700: #8b4132;
+  --yellow-50: #faf3df; --yellow-100: #f0e4c1; --yellow-500: #a2762a; --yellow-600: #88601e; --yellow-700: #6d4c17;
+
+  /* ---- Neutrals -------------------------------------------------
+     A handful of screens reach for the grey scale directly (a track
+     behind a progress bar, a dot on an inactive slot). Cool slate
+     next to pine reads as a different product's grey, so the ramp is
+     re-cut with a little green in it. */
+  --slate-0:   #ffffff;
+  --slate-50:  #f7f9f6;
+  --slate-100: #eff3ed;
+  --slate-200: #e4e9e1;
+  --slate-300: #d0dacb;
+  --slate-400: #9aa896;
+  --slate-500: #6f7d6c;
+  --slate-600: #55654f;
+  --slate-700: #3d5248;
+  --slate-800: #2c4035;
+  --slate-900: #24382d;
+  --slate-950: #18251f;
+
+  /* ---- Emerald scale --------------------------------------------
+     Kept under its old name — it is reached for directly in a few
+     places (the sidebar mark, active nav) — but re-cut as pine. */
+  --emerald-50: #edf2eb;
+  --emerald-100: #dae5d6;
+  --emerald-200: #c2d4bd;
+  --emerald-300: #a3bd9d;
+  --emerald-400: #7fa27c;
+  --emerald-500: #4d8163;
+  --emerald-600: var(--pine);
+  --emerald-700: var(--pine-deep);
+  --emerald-800: #234032;
+  --emerald-900: #1c3428;
+  --emerald-950: #14261d;
+
+  /* ---- Radius -------------------------------------------------
+     Evergreen's rule: 6px on anything you click, 12px on anything
+     you read inside. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+}
+
+/* ------------------------------------------------------------------
+   The sidebar rail
+
+   Evergreen's navigation is a pale sage panel, not a dark one: the
+   working surface stays white and the rail sits a shade behind it.
+   These override theme.css, which pointed the same names at the old
+   inverse surface.
+   ------------------------------------------------------------------ */
+:root {
+  --sidebar: #edf2ea;
+  --sidebar-foreground: #53634f;
+  --sidebar-primary: var(--pine);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ffffff;
+  --sidebar-accent-foreground: var(--evergreen-ink);
+  --sidebar-border: #dde5d9;
+  --sidebar-ring: var(--pine);
+}
+
+/* ==================================================================
+   Dark
+   ==================================================================
+   Not the light theme inverted. Evergreen at night is a desaturated
+   green-grey with a *lighter* brand than its background — pine on
+   near-black is unreadable, so the accent and the surface swap roles
+   and `--text-on-brand` goes dark to follow.
+
+   Only the semantic names are restated. Everything downstream — the
+   shadcn bridge, the category accents, every screen — is already
+   written against these, so nothing else has to know about the mode.
+
+   Keyed on `data-mode` rather than `prefers-color-scheme` because a
+   manual choice has to be able to disagree with the device.
+   ------------------------------------------------------------------ */
+:root[data-mode='dark'] {
+  color-scheme: dark;
+
+  --surface-app: #18251f;
+  --surface-card: #213129;
+  --surface-sunken: #2c3d31;
+  --surface-raised: #253629;
+  --surface-inverse: #0f1813;
+  --surface-inverse-2: #18251f;
+  --surface-hover: #2a3b2f;
+  --surface-active: #324536;
+
+  --text-strong: #e7eee8;
+  --text-body: #d3ded5;
+  --text-muted: #adbbb0;
+  --text-subtle: #8c9b8f;
+  --text-on-brand: #1c3023;
+  --text-on-dark: #e7eee8;
+  --text-on-dark-muted: #adbbb0;
+
+  --border: #3a4b3e;
+  --border-subtle: #2f3f33;
+  --border-strong: #4a5d4e;
+  --border-hover: #5d7161;
+  --border-focus: #bad4b8;
+  --divider: #3a4b3e;
+
+  /* Mint, not pine: at this luminance the brand has to be the light
+     thing on the surface rather than the dark thing on the page. */
+  --brand: #bad4b8;
+  --brand-strong: #cfe3cc;
+  --brand-soft: #2c3d31;
+  --brand-soft-200: #3a4f3e;
+  --brand-contrast: #1c3023;
+
+  --success: #b3d4ad;  --success-soft: #304732;  --success-border: #456349;
+  --warning: #e8cd91;  --warning-soft: #474330;  --warning-border: #655d3f;
+  --danger: #f0b0a0;   --danger-soft: #513c33;   --danger-border: #6d5245;
+  --info: #a8c8d2;     --info-soft: #2d4147;     --info-border: #435c62;
+
+  --ring: color-mix(in srgb, #bad4b8 34%, transparent);
+
+  /* One dark ink reads on every accent at this luminance, so filled blocks
+     do not each need their own. */
+  --text-on-accent: #16241c;
+
+  /* A 7% wash of a pale accent into a dark card is invisible. Badges and
+     washes are mixed at a higher strength here to survive the surface. */
+  --wash-strength: 20%;
+
+  /* Category accents, lifted so a glyph on a dark card still reads. The
+     -50 steps are no longer washes but the dark blocks they sit on. */
+  --teal-50: #26403c;   --teal-100: #305049;  --teal-500: #8fc4ba;  --teal-600: #a3d0c6;  --teal-700: #b7dcd3;
+  --blue-50: #27353f;   --blue-100: #33454f;  --blue-500: #a3c0d4;  --blue-600: #b3cce0;  --blue-700: #c6daea;
+  --cyan-50: #234047;   --cyan-100: #2e5059;  --cyan-500: #93c6d2;  --cyan-600: #a7d3de;  --cyan-700: #bbdfe8;
+  --indigo-50: #2f3145; --indigo-100: #3c3f57; --indigo-500: #b1b2d4; --indigo-600: #c1c2e0; --indigo-700: #d1d2ea;
+  --violet-50: #382f42; --violet-100: #473b53; --violet-500: #c4aed4; --violet-600: #d2c0df; --violet-700: #ded1e8;
+  --rose-50: #513c33;   --rose-100: #664a3f;  --rose-500: #e79e8c;  --rose-600: #f0b0a0;  --rose-700: #f6c6ba;
+  --amber-50: #474330;  --amber-100: #5b553b; --amber-500: #dfc084; --amber-600: #e8cd91; --amber-700: #f0dbab;
+
+  --green-50: #304732;  --green-100: #3e5b41; --green-500: #a3caa0; --green-600: #b3d4ad; --green-700: #c6e0c0;
+  --red-50: #513c33;    --red-100: #664a3f;   --red-500: #e79e8c;   --red-600: #f0b0a0;   --red-700: #f6c6ba;
+  --yellow-50: #474330; --yellow-100: #5b553b; --yellow-500: #dfc084; --yellow-600: #e8cd91; --yellow-700: #f0dbab;
+
+  /* Neutrals keep their names but run the other way: a screen asking for
+     `--slate-200` wants "a line", not "a light grey". */
+  --slate-0:   #213129;
+  --slate-50:  #1d2c24;
+  --slate-100: #26362c;
+  --slate-200: #3a4b3e;
+  --slate-300: #4a5d4e;
+  --slate-400: #7d8f80;
+  --slate-500: #9aab9d;
+  --slate-600: #b6c4b8;
+  --slate-700: #cdd8ce;
+  --slate-800: #dde6de;
+  --slate-900: #e7eee8;
+  --slate-950: #f2f6f2;
+
+  --emerald-50: #2c3d31;
+  --emerald-100: #3a4f3e;
+  --emerald-200: #4d6651;
+  --emerald-300: #708a73;
+  --emerald-400: #93b094;
+  --emerald-500: #a6c5a6;
+  --emerald-600: #bad4b8;
+  --emerald-700: #cfe3cc;
+  --emerald-800: #dfeddc;
+  --emerald-900: #ecf4ea;
+  --emerald-950: #f5faf4;
+
+  /* The rail is darker than the working surface here, where in light it
+     is a shade behind it. Same relationship, opposite direction. */
+  --sidebar: #1c2c22;
+  --sidebar-foreground: #a9bbad;
+  --sidebar-primary: #bad4b8;
+  --sidebar-primary-foreground: #1c3023;
+  --sidebar-accent: #344838;
+  --sidebar-accent-foreground: #e7eee8;
+  --sidebar-border: #2f4133;
+  --sidebar-ring: #bad4b8;
+
+  --auth-story-bg: #263f31;
+  --auth-note-bg: #344e3c;
+  --auth-note-border: #57725b;
+}
+
+:root[data-mode='dark'] ::selection {
+  background: #344838;
+  color: #e7eee8;
+}
+
+/* The active rail row is a raised block rather than a white card — there is
+   no white to lift it with. */
+:root[data-mode='dark'] [data-sidebar='sidebar'] [data-sidebar='menu-button'][data-active='true']::before {
+  background: #bad4b8;
+}
+
+:root[data-mode='dark'] .skip-link {
+  background: #bad4b8;
+  color: #1c3023;
+}
+
+/* The shimmer is drawn from two literal greys; at night they are the two
+   brightest things on the page unless they follow the mode. */
+:root[data-mode='dark'] .ts-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--slate-100) 0%,
+    var(--slate-200) 20%,
+    var(--slate-100) 40%,
+    var(--slate-100) 100%
+  );
+}
+
+/* ------------------------------------------------------------------
+   Type
+
+   Bricolage carries the headings; DM Sans carries the work. The
+   feature settings from the previous face are cleared — they named
+   stylistic sets DM Sans does not have.
+   ------------------------------------------------------------------ */
+body {
+  font-feature-settings: normal;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* An eyebrow in this system is a quiet label, not a set of small caps. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------------
+   Chrome
+   ------------------------------------------------------------------ */
+::selection {
+  background: var(--sage);
+  color: var(--pine);
+}
+
+/* The active row is a white card lifted out of the sage rail. Its marker bar
+   is the sidebar block's own `::before`, re-pointed at pine — the soft green
+   it shipped with was drawn for a navy rail and disappears on this one. */
+[data-sidebar='sidebar'] [data-sidebar='menu-button'][data-active='true'] {
+  font-weight: 600;
+}
+
+[data-sidebar='sidebar'] [data-sidebar='menu-button'][data-active='true']::before {
+  background: var(--pine);
+}
+
+/* A nav count is a tint of the brand, not a chip with an outline: it is a
+   number attached to the row it belongs to, and a border made it read as a
+   separate control sitting beside the link. */
+[data-sidebar='sidebar'] [data-sidebar='menu-badge'] {
+  display: grid;
+  place-items: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+[data-sidebar='sidebar'] [data-sidebar='group-label'] {
+  color: var(--text-subtle);
+}
+
+/* The rail is a shade behind the working surface, separated by a line
+   rather than by a shadow. */
+[data-sidebar='sidebar'] {
+  border-right: 1px solid var(--sidebar-border);
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  top: 8px;
+  left: 8px;
+  padding: 12px 18px;
+  border-radius: 6px;
+  background: var(--pine);
+  color: #ffffff;
+  transform: translateY(-160%);
+}
+.skip-link:focus { transform: translateY(0); }
+
+/* The fallback ring for anything that draws no focus state of its own.
+
+   Layered, deliberately. Unlayered CSS outranks every Tailwind utility, so as
+   a bare rule this outline beat `outline-none` on each input and search field
+   that paints its own ring, and those controls showed two rings at once. In
+   `base` a component's own focus treatment wins, and plain links and buttons
+   still get this one. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--pine);
+    outline-offset: 3px;
+  }
+
+  /* Anything clickable says so. Tailwind v4 gave buttons the default arrow,
+     which on a touch-first shift tool reads as "this does nothing". Reka
+     renders most interactive parts as roles on plain elements, so the roles
+     are listed too. Layered for the same reason as the ring above: a
+     component's own cursor utility still wins. */
+  button,
+  a[href],
+  summary,
+  select,
+  label[for],
+  input:is([type='checkbox'], [type='radio'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='color'], [type='range']),
+  input[type='search']::-webkit-search-cancel-button,
+  [role='button'],
+  [role='link'],
+  [role='tab'],
+  [role='menuitem'],
+  [role='menuitemcheckbox'],
+  [role='menuitemradio'],
+  [role='option'],
+  [role='checkbox'],
+  [role='radio'],
+  [role='switch'],
+  [role='slider'] {
+    cursor: pointer;
+  }
+
+  /* A pointer on a control that will not respond is a promise it breaks. */
+  :is(button, select, input, [role]):is(:disabled, [aria-disabled='true'], [data-disabled]) {
+    cursor: not-allowed;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}

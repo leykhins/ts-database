@@ -289,72 +289,82 @@ const dialogTenant = computed(() =>
 
 <template>
   <div class="flex flex-col gap-5">
-    <NuxtLink
-      to="/tenants"
-      class="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-muted-foreground no-underline hover:text-[var(--text-strong)] hover:no-underline"
-    >
-      <DsIcon name="arrow-left" :size="16" /> Back to tenants
-    </NuxtLink>
-
+    <!-- The way back out is the breadcrumb in the shell's second band now; a
+         "Back to tenants" link directly under "Dodson Rooms › Tenants" was the
+         same door twice. -->
     <TsLoadingState v-if="isLoading" label="Loading resident record…" :rows="6" />
 
     <template v-else-if="tenant">
       <!--
-        Identity. Three stacked bands rather than one wrapping row: the actions
-        are wide enough (six controls) that competing for the same line starved
-        the name column and wrapped it even on a 1440 screen.
+        Who this is stays on screen while you work through the record.
+
+        The identity and bio used to be a band across the top and a card inside
+        the Bio tab, which meant that reading a rent ledger or a shift note put
+        the person out of view entirely — the exact moment you most want to be
+        reminded who you are reading about. Both now live in one column on the
+        right that sticks below the topbar and scrolls inside itself, and it is
+        the same card on every tab.
       -->
-      <header class="flex flex-col gap-4">
-        <div class="flex items-start gap-4">
-          <div class="shrink-0">
-          <div
-            v-if="profile?.photoUrl"
-            class="size-[76px] overflow-hidden rounded-lg border border-border bg-[var(--surface-sunken)]"
-          >
-            <img :src="profile.photoUrl" :alt="tenant.name" class="size-full object-cover" >
+      <div class="record-layout">
+        <aside class="record-summary" aria-label="Resident bio">
+          <div class="record-summary__header">
+            <div class="shrink-0">
+              <div
+                v-if="profile?.photoUrl"
+                class="size-[66px] overflow-hidden rounded-lg border border-border bg-[var(--surface-sunken)]"
+              >
+                <img :src="profile.photoUrl" :alt="tenant.name" class="size-full object-cover" >
+              </div>
+              <DsPersonAvatar
+                v-else
+                :name="tenant.name"
+                size="xl"
+                :status="tenant.critical ? 'alert' : 'online'"
+              />
+              <input
+                ref="photoInput"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                @change="uploadPhoto"
+              >
+              <div class="mt-1.5 flex justify-center gap-1">
+                <button
+                  type="button"
+                  class="cursor-pointer border-none bg-transparent p-0 text-2xs font-semibold text-muted-foreground hover:text-[var(--text-strong)] disabled:opacity-50"
+                  :disabled="!can('tenancy') || uploading"
+                  :title="denied('tenancy') ?? 'Upload a photo'"
+                  @click="photoInput?.click()"
+                >
+                  {{ uploading ? 'Uploading…' : profile?.photoUrl ? 'Replace' : 'Add photo' }}
+                </button>
+                <button
+                  v-if="profile?.photoUrl && can('tenancy')"
+                  type="button"
+                  class="cursor-pointer border-none bg-transparent p-0 text-2xs font-semibold text-muted-foreground hover:text-destructive"
+                  @click="clearPhoto"
+                >
+                  · Remove
+                </button>
+              </div>
+            </div>
+
+            <div class="min-w-0">
+              <Badge v-if="tenant.balanceCents > 0" variant="warning" dot>Rent Due</Badge>
+              <Badge v-else variant="success" dot>All Clear</Badge>
+              <!-- h2: the shell's second band already carries this page's h1. -->
+              <h2 class="record-summary__name">{{ tenant.name }}</h2>
+              <p class="record-summary__where">
+                <span class="mono">Room {{ tenant.room }}</span> · {{ tenant.buildingName }}
+              </p>
+            </div>
           </div>
-          <DsPersonAvatar
-            v-else
-            :name="tenant.name"
-            size="xl"
-            :status="tenant.critical ? 'alert' : 'online'"
-          />
-          <input
-            ref="photoInput"
-            type="file"
-            accept="image/*"
-            class="hidden"
-            @change="uploadPhoto"
-          >
-          <div class="mt-1.5 flex justify-center gap-1">
-            <button
-              type="button"
-              class="cursor-pointer border-none bg-transparent p-0 text-2xs font-semibold text-muted-foreground hover:text-[var(--text-strong)] disabled:opacity-50"
-              :disabled="!can('tenancy') || uploading"
-              :title="denied('tenancy') ?? 'Upload a photo'"
-              @click="photoInput?.click()"
-            >
-              {{ uploading ? 'Uploading…' : profile?.photoUrl ? 'Replace' : 'Add photo' }}
-            </button>
-            <button
-              v-if="profile?.photoUrl && can('tenancy')"
-              type="button"
-              class="cursor-pointer border-none bg-transparent p-0 text-2xs font-semibold text-muted-foreground hover:text-destructive"
-              @click="clearPhoto"
-            >
-              · Remove
-            </button>
-          </div>
-        </div>
-        <div class="min-w-0 flex-1">
-          <div class="flex flex-wrap items-center gap-2.5">
-            <h1 class="text-xl font-bold text-[var(--text-strong)] sm:text-2xl">{{ tenant.name }}</h1>
+
+          <div class="record-summary__flags">
             <Badge v-if="tenant.critical" variant="rose">
               <DsIcon name="heart-pulse" :size="12" :stroke-width="2.5" />
               Critical Needs
             </Badge>
-            <Badge v-if="tenant.balanceCents > 0" variant="warning" dot>Rent Due</Badge>
-            <Badge v-else variant="success" dot>All Clear</Badge>
             <Badge
               v-for="guest in overnightGuests ?? []"
               :key="guest._id"
@@ -364,99 +374,159 @@ const dialogTenant = computed(() =>
               <DsIcon name="moon" :size="12" :stroke-width="2.5" />
               {{ guest.name }} · {{ overnightDays(guest.days) }}
             </Badge>
+            <DsSupportMeter :level="tenant.supportLevel" size="sm" />
           </div>
-            <!--
-              Separators are drawn as a ::before on each item after the first,
-              so a wrapped line can never end on an orphan "·" the way sibling
-              separators did — and an absent pronoun leaves no gap behind.
-            -->
-            <div
-              class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-base text-muted-foreground sm:gap-x-3 sm:[&>*+*]:before:mr-3 sm:[&>*+*]:before:text-[var(--border-strong)] sm:[&>*+*]:before:content-['·']"
-            >
-              <span class="mono">Room {{ tenant.room }}</span>
-              <span>{{ tenant.buildingName }}</span>
-              <span v-if="profile?.pronouns">{{ profile.pronouns }}</span>
-              <span class="inline-flex items-center">
-                <DsSupportMeter :level="tenant.supportLevel" size="sm" />
-              </span>
+
+          <TsConditionBar v-if="profile" :flags="profile.flags" class="record-summary__conditions" />
+
+          <dl v-if="profile" class="record-summary__fields">
+            <div>
+              <dt>Preferred name</dt>
+              <dd>{{ profile.preferredName ?? 'Not recorded' }}</dd>
             </div>
+            <div>
+              <dt>Pronouns</dt>
+              <dd>{{ profile.pronouns ?? 'Not recorded' }}</dd>
+            </div>
+            <div>
+              <dt>Date of birth</dt>
+              <dd>
+                {{ formatDate(profile.dob) }}
+                <span v-if="profile.dob" class="font-normal text-muted-foreground">
+                  ({{ yearsSince(profile.dob) }})
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt>Phone</dt>
+              <dd class="mono">{{ profile.phone ?? 'Not recorded' }}</dd>
+            </div>
+            <div>
+              <dt>Language</dt>
+              <dd>{{ profile.languages ?? 'English' }}</dd>
+            </div>
+            <div>
+              <dt>Population group</dt>
+              <dd>{{ profile.populationGroup ?? 'Not recorded' }}</dd>
+            </div>
+            <div>
+              <dt>Floor</dt>
+              <dd>{{ profile.floor ?? 'Not recorded' }}</dd>
+            </div>
+            <div>
+              <dt>Resident since</dt>
+              <dd>{{ formatDate(tenant.intakeDate) }}</dd>
+            </div>
+            <div>
+              <dt>SIN</dt>
+              <dd v-if="!profile.sin" class="text-muted-foreground">Not recorded</dd>
+              <dd v-else-if="!canSeeSin" class="text-muted-foreground">Restricted</dd>
+              <dd v-else class="flex flex-wrap items-center gap-2">
+                <span class="mono">
+                  {{ sinRevealed && fullSin ? fullSin : profile.sin.masked }}
+                </span>
+                <button
+                  type="button"
+                  class="cursor-pointer border-none bg-transparent p-0 text-2xs font-semibold text-muted-foreground hover:text-[var(--text-strong)]"
+                  @click="sinRevealed = !sinRevealed"
+                >
+                  {{ sinRevealed ? 'Hide' : 'Reveal' }}
+                </button>
+              </dd>
+            </div>
+          </dl>
+
+          <div v-if="profile?.writeUp" class="record-summary__writeup">
+            <span class="eyebrow">Write-up</span>
+            <p>{{ profile.writeUp }}</p>
           </div>
-        </div>
 
-        <TsConditionBar v-if="profile" :flags="profile.flags" />
+          <div class="record-summary__actions">
+            <Button
+              variant="secondary"
+              size="sm"
+              :disabled="!can('tenancy')"
+              :title="denied('tenancy') ?? 'Edit the record'"
+              @click="bioOpen = true"
+            >
+              <DsIcon name="pencil" :size="15" />
+              Edit information
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              title="Print the responder sheet — no rent, no notes"
+              @click="navigateTo(`/tenants/${tenantId}/print`)"
+            >
+              <DsIcon name="printer" :size="15" />
+              Responder sheet
+            </Button>
+          </div>
+        </aside>
 
-        <!--
-          Two even columns on a phone with the primary action spanning both;
-          a plain wrapping row once there is width for it.
-        -->
-        <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-          <Button
-            variant="secondary"
-            :disabled="!can('care')"
-            :title="denied('care') ?? 'Change support level'"
-            @click="levelOpen = true"
-          >
-            <DsIcon name="traffic-cone" :size="17" />
-            Support level
-          </Button>
-          <Button
-            variant="secondary"
-            :disabled="!can('care')"
-            :title="denied('care') ?? 'Open a case'"
-            @click="needOpen = true"
-          >
-            <DsIcon name="heart-pulse" :size="17" />
-            Open a case
-          </Button>
-          <Button
-            variant="secondary"
-            :disabled="!can('money')"
-            :title="denied('money') ?? 'Adjust the deposit'"
-            @click="depositOpen = true"
-          >
-            <DsIcon name="lock" :size="17" />
-            Deposit
-          </Button>
-          <Button
-            variant="secondary"
-            :disabled="!can('tenancy')"
-            :title="denied('tenancy') ?? 'Edit the record, move rooms, end the tenancy'"
-            @click="editOpen = true"
-          >
-            <DsIcon name="pencil" :size="17" />
-            Edit
-          </Button>
-          <Button
-            variant="secondary"
-            title="Print the responder sheet — no rent, no notes"
-            @click="navigateTo(`/tenants/${tenantId}/print`)"
-          >
-            <DsIcon name="printer" :size="17" />
-            Print sheet
-          </Button>
-          <Button
-            variant="primary"
-            class="col-span-2 sm:col-span-1"
-            :disabled="!can('money')"
-            :title="denied('money') ?? 'Receive rent'"
-            @click="rentDialogOpen = true"
-          >
-            <DsIcon name="dollar-sign" :size="17" />
-            Receive Rent
-          </Button>
-        </div>
-      </header>
+        <div class="record-main">
+          <!--
+            Two even columns on a phone with the primary action spanning both;
+            a plain wrapping row once there is width for it.
+          -->
+          <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            <Button
+              variant="secondary"
+              :disabled="!can('care')"
+              :title="denied('care') ?? 'Change support level'"
+              @click="levelOpen = true"
+            >
+              <DsIcon name="traffic-cone" :size="17" />
+              Support level
+            </Button>
+            <Button
+              variant="secondary"
+              :disabled="!can('care')"
+              :title="denied('care') ?? 'Open a case'"
+              @click="needOpen = true"
+            >
+              <DsIcon name="heart-pulse" :size="17" />
+              Open a case
+            </Button>
+            <Button
+              variant="secondary"
+              :disabled="!can('money')"
+              :title="denied('money') ?? 'Adjust the deposit'"
+              @click="depositOpen = true"
+            >
+              <DsIcon name="lock" :size="17" />
+              Deposit
+            </Button>
+            <Button
+              variant="secondary"
+              :disabled="!can('tenancy')"
+              :title="denied('tenancy') ?? 'Edit the record, move rooms, end the tenancy'"
+              @click="editOpen = true"
+            >
+              <DsIcon name="pencil" :size="17" />
+              Edit
+            </Button>
+            <Button
+              variant="primary"
+              class="col-span-2 sm:col-span-1"
+              :disabled="!can('money')"
+              :title="denied('money') ?? 'Receive rent'"
+              @click="rentDialogOpen = true"
+            >
+              <DsIcon name="dollar-sign" :size="17" />
+              Receive Rent
+            </Button>
+          </div>
 
-      <Alert v-if="responderAlerts.length" variant="danger">
-        <DsIcon name="alert-octagon" :size="17" :stroke-width="2" />
-        <div>
-          <AlertTitle>Before entering</AlertTitle>
-          <AlertDescription>{{ responderAlerts.join(' · ') }}</AlertDescription>
-        </div>
-      </Alert>
+          <Alert v-if="responderAlerts.length" variant="danger">
+            <DsIcon name="alert-octagon" :size="17" :stroke-width="2" />
+            <div>
+              <AlertTitle>Before entering</AlertTitle>
+              <AlertDescription>{{ responderAlerts.join(' · ') }}</AlertDescription>
+            </div>
+          </Alert>
 
-
-      <Tabs v-model="tab" class="w-full">
+          <Tabs v-model="tab" class="w-full">
         <TabsList>
           <TabsTrigger value="bio">
             <DsIcon name="user" :size="15" />
@@ -478,266 +548,15 @@ const dialogTenant = computed(() =>
 
         <!-- ==================================================== Bio data -->
         <TabsContent value="bio" class="mt-5 flex flex-col gap-5">
-          <div v-if="profile" class="grid items-start gap-5 lg:grid-cols-[1.4fr_1fr]">
-            <Card>
-              <CardHeader>
-                <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-sm bg-[var(--surface-sunken)] text-muted-foreground">
-                  <DsIcon name="user" :size="18" />
-                </span>
-                <div class="flex min-w-0 flex-col gap-px">
-                  <span class="eyebrow">Bio data</span>
-                  <CardTitle>Basic information</CardTitle>
-                </div>
-                <CardAction>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    :disabled="!can('tenancy')"
-                    :title="denied('tenancy') ?? 'Edit the record'"
-                    @click="bioOpen = true"
-                  >
-                    <DsIcon name="pencil" :size="15" />
-                    Edit information
-                  </Button>
-                </CardAction>
-              </CardHeader>
-              <CardContent>
-                <dl class="grid gap-4 sm:grid-cols-3">
-                  <div class="flex flex-col gap-1">
-                    <dt class="eyebrow">Preferred name</dt>
-                    <dd class="font-semibold text-[var(--text-strong)]">
-                      {{ profile.preferredName ?? '—' }}
-                    </dd>
-                  </div>
-                  <div class="flex flex-col gap-1">
-                    <dt class="eyebrow">Pronouns</dt>
-                    <dd class="font-semibold text-[var(--text-strong)]">{{ profile.pronouns ?? '—' }}</dd>
-                  </div>
-                  <div class="flex flex-col gap-1">
-                    <dt class="eyebrow">Date of birth</dt>
-                    <dd class="font-semibold text-[var(--text-strong)]">
-                      {{ formatDate(profile.dob) }}
-                      <span v-if="profile.dob" class="font-normal text-muted-foreground">
-                        ({{ yearsSince(profile.dob) }})
-                      </span>
-                    </dd>
-                  </div>
-                  <div class="flex flex-col gap-1">
-                    <dt class="eyebrow">Phone number</dt>
-                    <dd class="mono font-semibold text-[var(--text-strong)]">
-                      {{ profile.phone ?? '—' }}
-                    </dd>
-                  </div>
-                  <div class="flex flex-col gap-1">
-                    <dt class="eyebrow">Population group</dt>
-                    <dd class="font-semibold text-[var(--text-strong)]">
-                      {{ profile.populationGroup ?? '—' }}
-                    </dd>
-                  </div>
-                  <div class="flex flex-col gap-1">
-                    <dt class="eyebrow">Language</dt>
-                    <dd class="font-semibold text-[var(--text-strong)]">
-                      {{ profile.languages ?? 'English' }}
-                    </dd>
-                  </div>
-                  <div class="flex flex-col gap-1">
-                    <dt class="eyebrow">Resident since</dt>
-                    <dd class="font-semibold text-[var(--text-strong)]">
-                      {{ formatDate(tenant.intakeDate) }}
-                    </dd>
-                  </div>
-                  <div class="flex flex-col gap-1">
-                    <dt class="eyebrow">Room</dt>
-                    <dd class="mono font-semibold text-[var(--text-strong)]">
-                      {{ tenant.room }}<span v-if="profile.floor" class="font-normal text-muted-foreground"> · {{ profile.floor }}</span>
-                    </dd>
-                  </div>
-                  <div class="flex flex-col gap-1">
-                    <dt class="eyebrow">SIN</dt>
-                    <dd v-if="!profile.sin" class="text-muted-foreground">Not recorded</dd>
-                    <dd v-else-if="!canSeeSin" class="text-muted-foreground">Restricted</dd>
-                    <dd v-else class="flex items-center gap-2">
-                      <span class="mono font-semibold text-[var(--text-strong)]">
-                        {{ sinRevealed && fullSin ? fullSin : profile.sin.masked }}
-                      </span>
-                      <button
-                        type="button"
-                        class="cursor-pointer border-none bg-transparent p-0 text-2xs font-semibold text-muted-foreground hover:text-[var(--text-strong)]"
-                        @click="sinRevealed = !sinRevealed"
-                      >
-                        {{ sinRevealed ? 'Hide' : 'Reveal' }}
-                      </button>
-                    </dd>
-                  </div>
-                </dl>
+          <!--
+            Identity and bio fields are not repeated here: they live in the
+            summary column on the right, where they stay visible on every tab.
+            What is left is everything a worker acts on rather than reads off.
 
-                <div v-if="profile.writeUp" class="mt-4 border-t border-[var(--border-subtle)] pt-4">
-                  <span class="eyebrow">Write-up</span>
-                  <p class="mt-1 text-base text-[var(--text-body)]">{{ profile.writeUp }}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <!-- Contacts -->
-            <Card>
-              <CardHeader>
-                <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-sm bg-[var(--surface-sunken)] text-muted-foreground">
-                  <DsIcon name="user-plus" :size="18" />
-                </span>
-                <div class="flex min-w-0 flex-col gap-px">
-                  <span class="eyebrow">Who to call</span>
-                  <CardTitle>Next of kin &amp; contacts</CardTitle>
-                </div>
-                <CardAction>
-                  <Button
-                    variant="secondary"
-                    size="icon-sm"
-                    aria-label="Add a contact"
-                    :disabled="!can('tenancy')"
-                    :title="denied('tenancy') ?? 'Add a contact'"
-                    @click="contactOpen = true"
-                  >
-                    <DsIcon name="plus" :size="15" />
-                  </Button>
-                </CardAction>
-              </CardHeader>
-              <CardContent>
-                <p v-if="!profile.contacts.length" class="text-base text-muted-foreground">
-                  No contacts on file. A resident with nobody to call is worth chasing at the next
-                  review.
-                </p>
-                <div
-                  v-for="contact in profile.contacts"
-                  :key="contact._id"
-                  class="flex items-start gap-3 border-b border-[var(--border-subtle)] py-2.5 last:border-0"
-                >
-                  <div class="min-w-0 flex-1">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span class="font-semibold text-[var(--text-strong)]">{{ contact.name }}</span>
-                      <Badge v-if="contact.isNextOfKin" variant="brand">Next of kin</Badge>
-                    </div>
-                    <div class="text-sm text-muted-foreground">{{ contact.relationship }}</div>
-                    <div v-if="contact.phone" class="mono text-sm font-semibold text-[var(--text-strong)]">
-                      {{ contact.phone }}
-                    </div>
-                    <div v-if="contact.email" class="truncate text-xs text-muted-foreground">
-                      {{ contact.email }}
-                    </div>
-                    <div v-if="contact.note" class="text-xs text-[var(--text-subtle)]">
-                      {{ contact.note }}
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Remove contact"
-                    :disabled="!can('tenancy')"
-                    @click="deleteContact(contact._id, contact.name)"
-                  >
-                    <DsIcon name="trash" :size="15" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <!-- Health -->
-            <Card>
-              <CardHeader>
-                <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-sm bg-[var(--rose-50)] text-[var(--rose-600)]">
-                  <DsIcon name="heart-pulse" :size="18" />
-                </span>
-                <div class="flex min-w-0 flex-col gap-px">
-                  <span class="eyebrow">For responders</span>
-                  <CardTitle>Health information</CardTitle>
-                </div>
-                <CardAction>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    :disabled="!can('care')"
-                    :title="denied('care') ?? 'Record health information'"
-                    @click="bioOpen = true"
-                  >
-                    <DsIcon name="pencil" :size="15" />
-                    Update
-                  </Button>
-                </CardAction>
-              </CardHeader>
-              <CardContent class="flex flex-col gap-4">
-                <div v-for="section in HEALTH_SECTIONS" :key="section.title" class="flex flex-col gap-1">
-                  <span class="eyebrow">{{ section.title }}</span>
-                  <div
-                    v-for="item in section.items"
-                    :key="item.key"
-                    class="flex items-baseline justify-between gap-3 border-b border-[var(--border-subtle)] py-1.5 text-sm last:border-0"
-                  >
-                    <span class="text-[var(--text-body)]">{{ item.label }}</span>
-                    <span :class="tri(profile.health[item.key]).class">
-                      {{ tri(profile.health[item.key]).label }}
-                    </span>
-                  </div>
-                </div>
-
-                <div class="flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-3">
-                  <div v-for="detail in HEALTH_DETAILS" :key="detail.key" class="text-sm">
-                    <span class="eyebrow">{{ detail.label }}</span>
-                    <p class="text-[var(--text-body)]">
-                      {{ profile.health[detail.key] || 'Not recorded' }}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <!-- Intake & documents -->
-            <Card>
-              <CardHeader>
-                <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-sm bg-[var(--surface-sunken)] text-muted-foreground">
-                  <DsIcon name="clipboard-list" :size="18" />
-                </span>
-                <div class="flex min-w-0 flex-col gap-px">
-                  <span class="eyebrow">Paperwork</span>
-                  <CardTitle>Intake &amp; documents</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent class="flex flex-col gap-4">
-                <dl class="flex flex-col gap-1.5">
-                  <div
-                    v-for="row in INTAKE_ROWS"
-                    :key="row.key"
-                    class="flex items-baseline justify-between gap-3 border-b border-[var(--border-subtle)] py-1.5 text-sm last:border-0"
-                  >
-                    <dt class="text-muted-foreground">{{ row.label }}</dt>
-                    <dd class="text-right font-semibold text-[var(--text-strong)]">
-                      {{ profile.intake[row.key] ?? 'Not entered' }}
-                    </dd>
-                  </div>
-                </dl>
-
-                <div class="flex flex-col gap-1.5 border-t border-[var(--border-subtle)] pt-3">
-                  <span class="eyebrow">Documents</span>
-                  <div
-                    v-for="row in DOCUMENT_ROWS"
-                    :key="row.key"
-                    class="flex items-center justify-between gap-3 text-sm"
-                  >
-                    <span class="text-[var(--text-body)]">{{ row.label }}</span>
-                    <span
-                      class="inline-flex items-center gap-1.5 font-semibold"
-                      :class="profile.documents[row.key] ? 'text-[var(--success)]' : 'text-[var(--text-subtle)]'"
-                    >
-                      <DsIcon
-                        :name="profile.documents[row.key] ? 'check-circle-2' : 'minus'"
-                        :size="14"
-                      />
-                      {{ profile.documents[row.key] ? 'Yes' : 'No' }}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
+            Critical needs lead. They were the last card on the tab, under
+            everything a worker reads at leisure — the wrong end for the one
+            thing that changes how you knock on the door.
+          -->
             <Card>
               <CardHeader>
                 <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-sm bg-[var(--surface-sunken)] text-muted-foreground">
@@ -773,6 +592,174 @@ const dialogTenant = computed(() =>
                 </div>
               </CardContent>
             </Card>
+
+          <!--
+            Two columns of roughly even weight, not a two-up grid. Health is
+            three times the height of the contacts card, so as sibling grid
+            cells they left a column of empty card beside it.
+          -->
+          <div v-if="profile" class="grid items-start gap-5 xl:grid-cols-2">
+            <div class="flex min-w-0 flex-col gap-5">
+              <Card>
+                <CardHeader>
+                  <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-sm bg-[var(--rose-50)] text-[var(--rose-600)]">
+                    <DsIcon name="heart-pulse" :size="18" />
+                  </span>
+                  <div class="flex min-w-0 flex-col gap-px">
+                    <span class="eyebrow">For responders</span>
+                    <CardTitle>Health information</CardTitle>
+                  </div>
+                  <CardAction>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      :disabled="!can('care')"
+                      :title="denied('care') ?? 'Record health information'"
+                      @click="bioOpen = true"
+                    >
+                      <DsIcon name="pencil" :size="15" />
+                      Update
+                    </Button>
+                  </CardAction>
+                </CardHeader>
+                <CardContent class="flex flex-col gap-4">
+                  <div v-for="section in HEALTH_SECTIONS" :key="section.title" class="flex flex-col gap-1">
+                    <span class="eyebrow">{{ section.title }}</span>
+                    <div
+                      v-for="item in section.items"
+                      :key="item.key"
+                      class="flex items-baseline justify-between gap-3 border-b border-[var(--border-subtle)] py-1.5 text-sm last:border-0"
+                    >
+                      <span class="text-[var(--text-body)]">{{ item.label }}</span>
+                      <span :class="tri(profile.health[item.key]).class">
+                        {{ tri(profile.health[item.key]).label }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-3">
+                    <div v-for="detail in HEALTH_DETAILS" :key="detail.key" class="text-sm">
+                      <span class="eyebrow">{{ detail.label }}</span>
+                      <p class="text-[var(--text-body)]">
+                        {{ profile.health[detail.key] || 'Not recorded' }}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+            </div>
+
+            <div class="flex min-w-0 flex-col gap-5">
+              <Card>
+                <CardHeader>
+                  <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-sm bg-[var(--surface-sunken)] text-muted-foreground">
+                    <DsIcon name="user-plus" :size="18" />
+                  </span>
+                  <div class="flex min-w-0 flex-col gap-px">
+                    <span class="eyebrow">Who to call</span>
+                    <CardTitle>Next of kin &amp; contacts</CardTitle>
+                  </div>
+                  <CardAction>
+                    <Button
+                      variant="secondary"
+                      size="icon-sm"
+                      aria-label="Add a contact"
+                      :disabled="!can('tenancy')"
+                      :title="denied('tenancy') ?? 'Add a contact'"
+                      @click="contactOpen = true"
+                    >
+                      <DsIcon name="plus" :size="15" />
+                    </Button>
+                  </CardAction>
+                </CardHeader>
+                <CardContent>
+                  <p v-if="!profile.contacts.length" class="text-base text-muted-foreground">
+                    No contacts on file. A resident with nobody to call is worth chasing at the next
+                    review.
+                  </p>
+                  <div
+                    v-for="contact in profile.contacts"
+                    :key="contact._id"
+                    class="flex items-start gap-3 border-b border-[var(--border-subtle)] py-2.5 last:border-0"
+                  >
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-semibold text-[var(--text-strong)]">{{ contact.name }}</span>
+                        <Badge v-if="contact.isNextOfKin" variant="brand">Next of kin</Badge>
+                      </div>
+                      <div class="text-sm text-muted-foreground">{{ contact.relationship }}</div>
+                      <div v-if="contact.phone" class="mono text-sm font-semibold text-[var(--text-strong)]">
+                        {{ contact.phone }}
+                      </div>
+                      <div v-if="contact.email" class="truncate text-xs text-muted-foreground">
+                        {{ contact.email }}
+                      </div>
+                      <div v-if="contact.note" class="text-xs text-[var(--text-subtle)]">
+                        {{ contact.note }}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Remove contact"
+                      :disabled="!can('tenancy')"
+                      @click="deleteContact(contact._id, contact.name)"
+                    >
+                      <DsIcon name="trash" :size="15" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-sm bg-[var(--surface-sunken)] text-muted-foreground">
+                    <DsIcon name="clipboard-list" :size="18" />
+                  </span>
+                  <div class="flex min-w-0 flex-col gap-px">
+                    <span class="eyebrow">Paperwork</span>
+                    <CardTitle>Intake &amp; documents</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent class="flex flex-col gap-4">
+                  <dl class="flex flex-col gap-1.5">
+                    <div
+                      v-for="row in INTAKE_ROWS"
+                      :key="row.key"
+                      class="flex items-baseline justify-between gap-3 border-b border-[var(--border-subtle)] py-1.5 text-sm last:border-0"
+                    >
+                      <dt class="text-muted-foreground">{{ row.label }}</dt>
+                      <dd class="text-right font-semibold text-[var(--text-strong)]">
+                        {{ profile.intake[row.key] ?? 'Not entered' }}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div class="flex flex-col gap-1.5 border-t border-[var(--border-subtle)] pt-3">
+                    <span class="eyebrow">Documents</span>
+                    <div
+                      v-for="row in DOCUMENT_ROWS"
+                      :key="row.key"
+                      class="flex items-center justify-between gap-3 text-sm"
+                    >
+                      <span class="text-[var(--text-body)]">{{ row.label }}</span>
+                      <span
+                        class="inline-flex items-center gap-1.5 font-semibold"
+                        :class="profile.documents[row.key] ? 'text-[var(--success)]' : 'text-[var(--text-subtle)]'"
+                      >
+                        <DsIcon
+                          :name="profile.documents[row.key] ? 'check-circle-2' : 'minus'"
+                          :size="14"
+                        />
+                        {{ profile.documents[row.key] ? 'Yes' : 'No' }}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <!-- ============================================= Rent & deposits -->
@@ -1001,7 +988,9 @@ const dialogTenant = computed(() =>
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+          </Tabs>
+        </div>
+      </div>
     </template>
 
     <DsEmptyState
@@ -1051,3 +1040,181 @@ const dialogTenant = computed(() =>
     />
   </div>
 </template>
+
+<style scoped>
+/*
+  The record is one row: work on the left, the person on the right. The
+  summary is written second in the source but placed first in the grid, so a
+  narrow screen — where the grid collapses to a column — gets the identity
+  before the tabs rather than after them.
+*/
+.record-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 26px;
+  align-items: start;
+}
+
+.record-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.record-summary {
+  grid-column: 2;
+  grid-row: 1;
+  position: sticky;
+  /* Clears the sticky nav, with the page's own top padding under it.
+     `--nav-h` is measured by the shell; the topbar height is the fallback for
+     the frame before the observer has reported. */
+  top: calc(var(--nav-h, var(--topbar-h)) + var(--space-4));
+  max-height: calc(100dvh - var(--nav-h, var(--topbar-h)) - var(--space-10));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface-card);
+}
+
+.record-summary__header {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  padding: 22px 20px 18px;
+}
+
+.record-summary__name {
+  margin: 9px 0 6px;
+  font-family: var(--font-display);
+  font-size: 25px;
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.7px;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
+.record-summary__where {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.record-summary__flags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 0 20px 12px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.record-summary__conditions {
+  margin: 0 20px 12px;
+}
+
+.record-summary__fields {
+  padding: 0 20px;
+}
+
+.record-summary__fields > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 12px 0;
+  font-size: 11px;
+  line-height: 1.6;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.record-summary__fields > div:last-child {
+  border-bottom: 0;
+}
+
+.record-summary__fields dt {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.record-summary__fields dd {
+  text-align: right;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
+.record-summary__writeup {
+  margin: 4px 20px 0;
+  padding-top: 13px;
+  border-top: 1px solid var(--border);
+}
+
+.record-summary__writeup p {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-body);
+}
+
+.record-summary__actions {
+  display: flex;
+  gap: 9px;
+  padding: 16px 20px 20px;
+}
+
+.record-summary__actions > * {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+@media (min-width: 1600px) {
+  .record-layout {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 30px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .record-layout {
+    grid-template-columns: minmax(0, 1fr) 290px;
+    gap: 20px;
+  }
+}
+
+/* Under ~1000px there is no room for a second column, so the summary stops
+   being a rail and becomes the page's header — in document order, unpinned. */
+@media (max-width: 1000px) {
+  .record-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .record-summary {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    width: 100%;
+  }
+}
+
+/* A printed record is read top to bottom on paper; nothing sticks. */
+@media print {
+  .record-layout {
+    display: block;
+  }
+
+  .record-summary {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+</style>
