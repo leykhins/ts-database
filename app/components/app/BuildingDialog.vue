@@ -120,11 +120,11 @@ async function save() {
 
       <div class="flex flex-col gap-4 p-[22px]">
         <DsField v-slot="{ id }" label="Name" required :error="error">
-          <Input :id="id" v-model="name" placeholder="Dodson Rooms" :aria-invalid="!!error" />
+          <Input :id="id" v-model="name" placeholder="Cedar House" :aria-invalid="!!error" />
         </DsField>
 
         <DsField v-slot="{ id }" label="Address">
-          <Input :id="id" v-model="address" placeholder="25 East Hastings Street" />
+          <Input :id="id" v-model="address" placeholder="100 Main Street" />
         </DsField>
 
         <DsField

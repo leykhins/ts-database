@@ -290,7 +290,7 @@ const dialogTenant = computed(() =>
 <template>
   <div class="flex flex-col gap-5">
     <!-- The way back out is the breadcrumb in the shell's second band now; a
-         "Back to tenants" link directly under "Dodson Rooms › Tenants" was the
+         "Back to tenants" link directly under "Cedar House › Tenants" was the
          same door twice. -->
     <TsLoadingState v-if="isLoading" label="Loading resident record…" :rows="6" />
 

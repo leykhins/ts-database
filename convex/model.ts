@@ -605,7 +605,7 @@ export async function assignedBuildings(
  * first assigned building.
  *
  * Never the deployment's first building, which is how a worker at Carrall Annex
- * ends up reading Dodson's ledger. Takes the caller precisely so that mistake
+ * ends up reading Cedar House's ledger. Takes the caller precisely so that mistake
  * cannot be made silently — the signature is the reminder.
  */
 export async function resolveBuilding(

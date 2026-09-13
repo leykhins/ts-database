@@ -36,7 +36,7 @@ Convex Auth needs signing keys on the deployment:
 npx @convex-dev/auth
 ```
 
-Load the fictional sample building (Dodson Rooms, 48 rooms, 42 residents):
+Load the fictional sample building (Cedar House, 48 rooms, 42 residents):
 
 ```bash
 npm run seed
@@ -285,7 +285,7 @@ thing about the role being tested.
 
 Anyone assigned to more than one building is asked, once a shift, which site
 they are at. Relief and casual staff are the reason: the selection is remembered
-in `localStorage`, so a worker at Dodson on Monday and Carrall on Tuesday starts
+in `localStorage`, so a worker at Cedar House on Monday and Carrall on Tuesday starts
 Tuesday pointed at Monday's building — and nothing about that looks wrong. The
 roster loads, the checks save, and the site they are standing in shows those
 checks as never done. The server cannot catch it either, because they are

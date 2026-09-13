@@ -25,8 +25,8 @@ async function setup() {
 
   const ids = await t.run(async (ctx) => {
     const buildingId = await ctx.db.insert('buildings', {
-      name: 'Dodson Rooms',
-      slug: 'dodson-rooms',
+      name: 'Cedar House',
+      slug: 'cedar-house',
       units: 1,
     })
     const roomId = await ctx.db.insert('rooms', {
@@ -131,8 +131,8 @@ describe('capabilities', () => {
 
     await as(users['building-manager']).mutation(api.buildings.update, {
       buildingId,
-      name: 'Dodson Rooms',
-      address: '25 East Hastings Street',
+      name: 'Cedar House',
+      address: '100 Main Street',
       units: 48,
     })
 

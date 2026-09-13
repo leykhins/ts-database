@@ -21,7 +21,7 @@ async function setup() {
 
   const ids = await t.run(async (ctx) => {
     const home = await ctx.db.insert('buildings', {
-      name: 'Dodson Rooms', slug: 'dodson-rooms', units: 4,
+      name: 'Cedar House', slug: 'cedar-house', units: 4,
     })
     const other = await ctx.db.insert('buildings', {
       name: 'Carrall Annex', slug: 'carrall-annex', units: 4,
@@ -246,7 +246,7 @@ describe('history', () => {
 
     const history = await as(staff).query(api.tenants.placementHistory, { tenantId })
     expect(history.length).toBeGreaterThanOrEqual(2)
-    expect(history[0]?.building).toBe('Dodson Rooms') // newest first
+    expect(history[0]?.building).toBe('Cedar House') // newest first
     expect(history.some((h) => h.building === 'Carrall Annex')).toBe(true)
 
     // Exactly one placement is open — the one they are living in.
