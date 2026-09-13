@@ -427,7 +427,7 @@ async function removePet(petId: Id<'pets'>, name: string) {
                     name="check"
                     :size="15"
                     :stroke-width="2.6"
-                    class="text-white"
+                    class="text-[var(--text-on-accent)]"
                   />
                 </button>
 

@@ -14,11 +14,13 @@ import {
   AlertCircleIcon,
   AlertDiamondIcon,
   ArrowDown01Icon,
+  ArrowDownRight01Icon,
   ArrowLeft01Icon,
   ArrowLeft02Icon,
   ArrowRight01Icon,
   ArrowRight02Icon,
   ArrowUp01Icon,
+  ArrowUpRight01Icon,
   Building03Icon,
   Calendar01Icon,
   Camera01Icon,
@@ -75,6 +77,7 @@ import {
   UserCheck01Icon,
   UserGroupIcon,
   UserIcon,
+  ViewOffSlashIcon,
   WrenchIcon,
 } from '@hugeicons/core-free-icons'
 
@@ -119,6 +122,7 @@ export const ICONS: Record<string, IconNode[]> = {
   filter: FilterIcon as IconNode[],
   refresh: Refresh01Icon as IconNode[],
   eye: EyeIcon as IconNode[],
+  'eye-off': ViewOffSlashIcon as IconNode[],
   settings: Settings01Icon as IconNode[],
   'shield-user': ShieldUserIcon as IconNode[],
   'panel-left': SidebarLeft01Icon as IconNode[],
@@ -129,6 +133,8 @@ export const ICONS: Record<string, IconNode[]> = {
   // Status & feedback
   'trending-up': ChartUpIcon as IconNode[],
   'trending-down': ChartDownIcon as IconNode[],
+  'arrow-up-right': ArrowUpRight01Icon as IconNode[],
+  'arrow-down-right': ArrowDownRight01Icon as IconNode[],
   'alert-circle': AlertCircleIcon as IconNode[],
   'alert-triangle': Alert02Icon as IconNode[],
   'alert-octagon': AlertDiamondIcon as IconNode[],

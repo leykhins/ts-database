@@ -34,11 +34,11 @@ const pending = ref<string | null>(null)
 
 const SLOT: Record<string, { class: string; title: (t: string) => string }> = {
   done: {
-    class: 'border-transparent bg-[var(--emerald-600)] text-white',
+    class: 'border-transparent bg-[var(--emerald-600)] text-[var(--text-on-accent)]',
     title: (t) => `${t} — walked`,
   },
   missed: {
-    class: 'border-transparent bg-[var(--red-600)] text-white',
+    class: 'border-transparent bg-[var(--red-600)] text-[var(--text-on-accent)]',
     title: (t) => `${t} — missed`,
   },
   now: {
@@ -140,7 +140,7 @@ async function log(routine: 'rounds' | 'perimeter' | 'meds', label: string) {
 
             <Button
               size="sm"
-              variant="ghost"
+              variant="soft"
               class="ml-auto h-6 px-2 text-xs"
               :loading="pending === row.routine"
               :disabled="!can('checks')"

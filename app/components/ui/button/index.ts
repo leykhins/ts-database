@@ -22,7 +22,7 @@ export const buttonVariants = cva(
           "bg-card text-[var(--text-strong)] border-border hover:bg-[var(--surface-hover)]",
         ghost: "bg-transparent text-[var(--text-body)] hover:bg-[var(--surface-hover)]",
         soft: "bg-[var(--surface-sunken)] text-[var(--text-strong)] hover:bg-[var(--surface-active)]",
-        destructive: "bg-destructive text-white hover:bg-[var(--red-700)]",
+        destructive: "bg-destructive text-[var(--text-on-accent)] hover:bg-[var(--red-700)]",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

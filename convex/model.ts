@@ -153,49 +153,13 @@ export const DEFAULT_ROLE: Role = 'rsw'
    local time rather than UTC.
    ------------------------------------------------------------------------ */
 
-export type ShiftKey = 'overnight' | 'morning' | 'evening'
-
-export const SHIFTS: {
-  key: ShiftKey
-  label: string
-  hours: string
-  icon: string
-  from: number
-  to: number
-}[] = [
-  { key: 'overnight', label: 'Overnight Staff', hours: '12 – 8 am', icon: 'moon', from: 0, to: 8 },
-  { key: 'morning', label: 'Morning Staff', hours: '8 am – 4 pm', icon: 'sunrise', from: 8, to: 16 },
-  { key: 'evening', label: 'Evening Staff', hours: '4 pm – 12 am', icon: 'sunset', from: 16, to: 24 },
-]
-
-/**
- * The calendar day a moment falls on, in the building's local time.
- * `tzOffsetMinutes` is the browser's `getTimezoneOffset()` — minutes *behind*
- * UTC, so local = utc − offset.
- */
-export function localDate(now: number, tzOffsetMinutes: number): string {
-  return new Date(now - tzOffsetMinutes * 60_000).toISOString().slice(0, 10)
-}
-
-/** Minutes from midnight, in the building's local time. */
-export function localMinutes(now: number, tzOffsetMinutes: number): number {
-  const local = new Date(now - tzOffsetMinutes * 60_000)
-  return local.getUTCHours() * 60 + local.getUTCMinutes()
-}
-
-/**
- * The shift a moment belongs to. `tzOffsetMinutes` is the browser's
- * `getTimezoneOffset()` — minutes *behind* UTC, so local = utc − offset.
- */
-export function shiftAt(
-  now: number,
-  tzOffsetMinutes: number,
-): { key: ShiftKey; shiftDate: string; hour: number } {
-  const local = new Date(now - tzOffsetMinutes * 60_000)
-  const hour = local.getUTCHours()
-  const shift = SHIFTS.find((s) => hour >= s.from && hour < s.to) ?? SHIFTS[2]!
-  return { key: shift.key, shiftDate: local.toISOString().slice(0, 10), hour }
-}
+/*
+   The shift clock lives in `shifts.ts` — no imports, so the browser can read
+   it too. Re-exported here because every server module already reaches for
+   these through `model`.
+*/
+export type { ShiftKey } from './shifts'
+export { SHIFTS, localDate, localMinutes, shiftAt } from './shifts'
 
 /* ------------------------------------------------------------------------
    Duties

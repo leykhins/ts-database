@@ -4,38 +4,44 @@ import { cva } from "class-variance-authority"
 export { default as Badge } from "./Badge.vue"
 
 /**
- * TS Database badges are a wash of the hue over the card with a hairline of the
- * same hue — never a pastel block, never a pill (pills are reserved for avatars
- * and status dots). Each variant just declares its hue and text colour; the
- * base class does the mixing.
+ * A badge is a small solid block of its own tone — the status colour at low
+ * saturation behind the status word, with no border.
+ *
+ * It used to be a few percent of the hue mixed into the card plus a hairline
+ * of the same hue. That reads as a tint of the surface rather than as a thing,
+ * and it collapses in dark mode, where a pale accent washed into a dark card
+ * is very nearly the card. A solid `--*-soft` block carries the same colour
+ * coding at a contrast that survives both modes and any surface it lands on —
+ * a card, a sunken well, a coloured row.
+ *
+ * Each variant declares a background and a foreground, both already
+ * mode-aware; the base class does the rest.
  */
 export const badgeVariants = cva(
   [
-    "inline-flex items-center gap-1 w-fit shrink-0 whitespace-nowrap",
-    "rounded-sm border px-[0.55em] py-[0.16em]",
-    "text-xs font-semibold leading-[1.4]",
+    "inline-flex items-center justify-center gap-1 w-fit shrink-0 whitespace-nowrap",
+    "rounded-xs px-[0.6em] py-[0.22em]",
+    "text-2xs font-medium leading-[1.5]",
     "[&>svg]:size-3 [&>svg]:pointer-events-none",
-    "bg-[color-mix(in_srgb,var(--tone)_var(--wash-strength),var(--surface-card))]",
-    "border-[color-mix(in_srgb,var(--tone)_18%,transparent)]",
-    "text-[var(--tone-fg)]",
+    "bg-[var(--tone-bg)] text-[var(--tone-fg)]",
   ].join(" "),
   {
     variants: {
       variant: {
-        neutral: "[--tone:var(--slate-500)] [--tone-fg:var(--slate-700)]",
-        brand: "[--tone:var(--emerald-600)] [--tone-fg:var(--emerald-700)]",
-        success: "[--tone:var(--success)] [--tone-fg:var(--green-700)]",
-        warning: "[--tone:var(--amber-600)] [--tone-fg:var(--amber-700)]",
-        danger: "[--tone:var(--danger)] [--tone-fg:var(--red-700)]",
-        destructive: "[--tone:var(--danger)] [--tone-fg:var(--red-700)]",
-        info: "[--tone:var(--info)] [--tone-fg:var(--blue-700)]",
-        teal: "[--tone:var(--teal-600)] [--tone-fg:var(--teal-700)]",
-        cyan: "[--tone:var(--cyan-600)] [--tone-fg:var(--cyan-700)]",
-        indigo: "[--tone:var(--indigo-600)] [--tone-fg:var(--indigo-700)]",
-        violet: "[--tone:var(--violet-600)] [--tone-fg:var(--violet-700)]",
-        rose: "[--tone:var(--rose-600)] [--tone-fg:var(--rose-700)]",
+        neutral: "[--tone-bg:var(--surface-sunken)] [--tone-fg:var(--text-muted)]",
+        brand: "[--tone-bg:var(--brand-soft)] [--tone-fg:var(--brand)]",
+        success: "[--tone-bg:var(--success-soft)] [--tone-fg:var(--success)]",
+        warning: "[--tone-bg:var(--warning-soft)] [--tone-fg:var(--warning)]",
+        danger: "[--tone-bg:var(--danger-soft)] [--tone-fg:var(--danger)]",
+        destructive: "[--tone-bg:var(--danger-soft)] [--tone-fg:var(--danger)]",
+        info: "[--tone-bg:var(--info-soft)] [--tone-fg:var(--info)]",
+        teal: "[--tone-bg:var(--teal-50)] [--tone-fg:var(--teal-700)]",
+        cyan: "[--tone-bg:var(--cyan-50)] [--tone-fg:var(--cyan-700)]",
+        indigo: "[--tone-bg:var(--indigo-50)] [--tone-fg:var(--indigo-700)]",
+        violet: "[--tone-bg:var(--violet-50)] [--tone-fg:var(--violet-700)]",
+        rose: "[--tone-bg:var(--rose-50)] [--tone-fg:var(--rose-700)]",
         // `solid` is reserved for the one thing on screen that must dominate.
-        solid: "[--tone:var(--brand)] [--tone-fg:#fff] !bg-[var(--tone)] border-transparent",
+        solid: "[--tone-bg:var(--brand)] [--tone-fg:var(--text-on-accent)]",
       },
     },
     defaultVariants: {

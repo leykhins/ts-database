@@ -6,8 +6,13 @@
    ============================================================ */
 
 /* Webfonts first: a remote @import has to precede every rule, and Tailwind's
-   own import emits rules. Contents match tokens/fonts.css. */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap');
+   own import emits rules.
+
+   Bricolage Grotesque for headings, DM Sans for the interface, JetBrains Mono
+   for rooms and money. The families the Evergreen layer names, not the ones in
+   the unused tokens/fonts.css — that file is part of the vendored set and is
+   left as the design system shipped it. */
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @import 'tailwindcss';
 @import 'tw-animate-css';
@@ -21,3 +26,7 @@
 
 /* Bridge: expresses the tokens above in the names Tailwind and shadcn expect. */
 @import './theme.css';
+
+/* Evergreen: re-points the tokens above at the SupportOS palette and type.
+   Last, so it wins on order rather than on specificity. */
+@import './workspace.css';
