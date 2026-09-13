@@ -22,8 +22,8 @@ async function setup(tenantCount = 30) {
 
   const ids = await t.run(async (ctx) => {
     const buildingId = await ctx.db.insert('buildings', {
-      name: 'Dodson Rooms',
-      slug: 'dodson-rooms',
+      name: 'Cedar House',
+      slug: 'cedar-house',
       units: tenantCount,
     })
 

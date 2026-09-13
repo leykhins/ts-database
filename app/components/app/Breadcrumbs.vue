@@ -29,7 +29,7 @@ const atAreaRoot = computed(() => !!area.value && route.path === area.value.to)
  * Ancestors only.
  *
  * The heading directly beneath this trail is the current page, so ending the
- * trail with the page as well printed "Dodson Rooms › Care Console" above a
+ * trail with the page as well printed "Cedar House › Care Console" above a
  * heading reading "Care Console". The last crumb is dropped rather than the
  * heading: a trail is for getting back out, and the page you are already on is
  * the one link in it nobody needs.

@@ -35,8 +35,8 @@ async function setup() {
       units: 2,
     })
     const buildingA = await ctx.db.insert('buildings', {
-      name: 'Dodson Rooms',
-      slug: 'dodson-rooms',
+      name: 'Cedar House',
+      slug: 'cedar-house',
       units: 2,
     })
 
@@ -107,7 +107,7 @@ describe('building scoping', () => {
 
     const overview = await as(users.workerA).query(api.dashboard.overview, {})
     expect(overview?.building._id).toBe(buildingA)
-    expect(overview?.building.name).toBe('Dodson Rooms')
+    expect(overview?.building.name).toBe('Cedar House')
   })
 
   test('a worker cannot read another building’s dashboard', async () => {
@@ -201,7 +201,7 @@ describe('building scoping', () => {
 
     expect(
       (await as(users.admin).query(api.dashboard.overview, { buildingId: buildingA }))?.building.name,
-    ).toBe('Dodson Rooms')
+    ).toBe('Cedar House')
     expect(
       (await as(users.admin).query(api.dashboard.overview, { buildingId: buildingB }))?.building.name,
     ).toBe('Eastside Lodge')

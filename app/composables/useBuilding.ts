@@ -34,7 +34,7 @@ const CONFIRMATION_MS = 12 * 60 * 60 * 1000
  * building you were in.
  *
  * It survives *too* well for casual staff, which is what `confirm` is for. A
- * relief worker at Dodson on Monday and Carrall on Tuesday has a remembered
+ * relief worker at Cedar House on Monday and Carrall on Tuesday has a remembered
  * selection that is silently wrong on Tuesday, and nothing about the wrong
  * answer looks wrong: every screen renders plausible data, the wellness checks
  * land on the other site's roster, and the building they are standing in shows

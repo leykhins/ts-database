@@ -53,14 +53,14 @@ const FILLER_NAMES = [
   'Ali Rahman', 'Judith Osei', 'Nikolai Ivanov', 'Paulette Girard', 'Omar Haddad',
 ]
 
-const DODSON_FLOORS = [
+const MAIN_FLOORS = [
   { label: 'Floor 1', from: 101, to: 120 },
   { label: 'Floor 2', from: 201, to: 216 },
   { label: 'Floor 3', from: 301, to: 312 },
 ]
-const DODSON_VACANT = ['107', '114', '203', '210', '307', '312']
-const DODSON_CHECK_DUE = ['103', '111', '116', '201', '206', '302', '309']
-const DODSON_RENT_DUE = ['105', '215', '304'] // one month behind, beyond the named ten
+const MAIN_VACANT = ['107', '114', '203', '210', '307', '312']
+const MAIN_CHECK_DUE = ['103', '111', '116', '201', '206', '302', '309']
+const MAIN_RENT_DUE = ['105', '215', '304'] // one month behind, beyond the named ten
 
 const OTHER_BUILDINGS = [
   { name: 'Carrall Annex', slug: 'carrall-annex', units: 36, occupied: 33, floors: [{ label: 'Floor 1', from: 101, to: 118 }, { label: 'Floor 2', from: 201, to: 218 }], rent: 505 },
@@ -174,22 +174,22 @@ export const wipeAll = internalMutation({
 async function seed(ctx: MutationCtx) {
   const now = Date.now()
 
-  // ---------------------------------------------------------------- Dodson
-  const dodsonId = await ctx.db.insert('buildings', {
-    name: 'Dodson Rooms',
-    slug: 'dodson-rooms',
-    address: '25 East Hastings Street',
+  // ---------------------------------------------------------------- Cedar House
+  const mainId = await ctx.db.insert('buildings', {
+    name: 'Cedar House',
+    slug: 'cedar-house',
+    address: '100 Main Street',
     units: 48,
     })
 
   const roomIdByNumber = new Map<string, Id<'rooms'>>()
   let sort = 0
-  for (const floor of DODSON_FLOORS) {
+  for (const floor of MAIN_FLOORS) {
     for (let n = floor.from; n <= floor.to; n++) {
       const number = String(n)
-      const due = DODSON_CHECK_DUE.includes(number)
+      const due = MAIN_CHECK_DUE.includes(number)
       const id = await ctx.db.insert('rooms', {
-        buildingId: dodsonId,
+        buildingId: mainId,
         number,
         floor: floor.label,
         sortKey: sort++,
@@ -202,7 +202,7 @@ async function seed(ctx: MutationCtx) {
   }
 
   const occupiedRooms = [...roomIdByNumber.keys()].filter(
-    (n) => !DODSON_VACANT.includes(n),
+    (n) => !MAIN_VACANT.includes(n),
   )
   const namedByRoom = new Map(NAMED.map((t) => [t.room, t]))
   let fillerIdx = 0
@@ -220,7 +220,7 @@ async function seed(ctx: MutationCtx) {
       (['independent', 'moderate', 'moderate', 'high'] as Level[])[fillerIdx % 4]!
 
     const tenantId = await ctx.db.insert('tenants', {
-      buildingId: dodsonId,
+      buildingId: mainId,
       roomId,
       name: named?.name ?? FILLER_NAMES[fillerIdx % FILLER_NAMES.length]!,
       dob: named?.dob ?? `19${60 + (fillerIdx % 30)}-0${(fillerIdx % 9) + 1}-1${fillerIdx % 9}`,
@@ -235,14 +235,14 @@ async function seed(ctx: MutationCtx) {
 
     // ---- Ledger: three months charged, paid down to the target balance ----
     const balanceDollars =
-      named?.balance ?? (DODSON_RENT_DUE.includes(number) ? rentDollars : 0)
+      named?.balance ?? (MAIN_RENT_DUE.includes(number) ? rentDollars : 0)
     const chargedDollars = rentDollars * 3
     const paidDollars = chargedDollars - balanceDollars
 
     for (let m = 2; m >= 0; m--) {
       await ctx.db.insert('rentLedger', {
         tenantId,
-        buildingId: dodsonId,
+        buildingId: mainId,
         kind: 'charge',
         amountCents: cents(rentDollars),
         postedAt: now - m * 30 * DAY,
@@ -257,7 +257,7 @@ async function seed(ctx: MutationCtx) {
         const chunk = Math.min(rentDollars, remaining)
         await ctx.db.insert('rentLedger', {
           tenantId,
-          buildingId: dodsonId,
+          buildingId: mainId,
           kind: 'payment',
           amountCents: cents(chunk),
           postedAt: now - m * 30 * DAY + 2 * DAY,
@@ -274,7 +274,7 @@ async function seed(ctx: MutationCtx) {
     if (heldDollars > 0) {
       await ctx.db.insert('depositEntries', {
         tenantId,
-        buildingId: dodsonId,
+        buildingId: mainId,
         amountCents: cents(heldDollars),
         postedAt: now - 200 * DAY,
         reason: 'Deposit collected at intake',
@@ -284,7 +284,7 @@ async function seed(ctx: MutationCtx) {
     if (named?.critical) {
       await ctx.db.insert('criticalNeeds', {
         tenantId,
-        buildingId: dodsonId,
+        buildingId: mainId,
         summary: 'Wellness check scheduled',
         detail: 'Case manager visit due this week.',
         openedAt: now - 6 * DAY,
@@ -296,7 +296,7 @@ async function seed(ctx: MutationCtx) {
   // ---- Check history: 14 straight days of logged checks (the streak) ----
   for (let d = 1; d <= 14; d++) {
     await ctx.db.insert('roomChecks', {
-      buildingId: dodsonId,
+      buildingId: mainId,
       roomId: roomIdByNumber.get('204'),
       kind: 'room',
       completedAt: now - d * DAY,
@@ -305,7 +305,7 @@ async function seed(ctx: MutationCtx) {
   }
   // Building check last done 9 days ago → 2 days past the 7-day policy.
   await ctx.db.insert('roomChecks', {
-    buildingId: dodsonId,
+    buildingId: mainId,
     kind: 'building',
     completedAt: now - 9 * DAY,
     outcome: 'all-clear',
@@ -313,7 +313,7 @@ async function seed(ctx: MutationCtx) {
   })
 
   await ctx.db.insert('workOrders', {
-    buildingId: dodsonId,
+    buildingId: mainId,
     roomId: roomIdByNumber.get('118'),
     title: 'No heat in Room 118',
     detail: 'Maria Santos is on critical needs. Trades not yet assigned.',
@@ -322,7 +322,7 @@ async function seed(ctx: MutationCtx) {
     openedAt: now - 2 * DAY,
   })
   await ctx.db.insert('workOrders', {
-    buildingId: dodsonId,
+    buildingId: mainId,
     roomId: roomIdByNumber.get('215'),
     title: 'Dripping tap, Room 215',
     detail: 'Reported at front desk.',

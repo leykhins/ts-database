@@ -228,7 +228,7 @@ export default defineSchema({
      *
      * Deliberately an array on the user rather than a join table. Convex cannot
      * index array membership, so an index here would not answer "who works at
-     * Dodson" anyway; the only query that wants that is a staff-at-this-building
+     * Cedar House" anyway; the only query that wants that is a staff-at-this-building
      * panel that does not exist, and `users.list` already collects the whole
      * table. Revisit past a few hundred staff.
      */
