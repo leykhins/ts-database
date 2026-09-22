@@ -268,6 +268,80 @@ export const list = query({
   },
 })
 
+/**
+ * The signed-in worker's own submitted reports for one calendar month, across
+ * every building they have worked at.
+ *
+ * Read by the month rather than "the last N" because that is how a worker
+ * looks for a shift: "the Tuesday I covered the overnight" is a date, not a
+ * position in a list. `earliest` is the first shift on file, so the month
+ * picker knows how far back there is anything to see.
+ */
+export const mine = query({
+  args: {
+    /** `YYYY-MM`. */
+    month: v.string(),
+  },
+  handler: async (ctx, { month }) => {
+    const staff = await requireStaff(ctx)
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Pick a month.')
+
+    const [reports, first] = await Promise.all([
+      ctx.db
+        .query('shiftReports')
+        .withIndex('by_author_date', (q) =>
+          q.eq('authorId', staff._id).gte('shiftDate', `${month}-01`).lte('shiftDate', `${month}-31`),
+        )
+        .order('desc')
+        // Three shifts a day is the most a month can hold.
+        .take(93),
+      ctx.db
+        .query('shiftReports')
+        .withIndex('by_author_date', (q) => q.eq('authorId', staff._id))
+        .order('asc')
+        .first(),
+    ])
+
+    const submitted = reports.filter((r) => r.status === 'submitted')
+    const buildingIds = [...new Set(submitted.map((r) => r.buildingId))]
+    const buildings = await Promise.all(buildingIds.map((id) => ctx.db.get(id)))
+    const buildingName = new Map(buildings.filter(Boolean).map((b) => [b!._id as string, b!.name]))
+
+    const entriesByReport = await Promise.all(
+      submitted.map((r) =>
+        ctx.db
+          .query('shiftLogEntries')
+          .withIndex('by_report', (q) => q.eq('reportId', r._id))
+          .collect(),
+      ),
+    )
+
+    return {
+      month,
+      earliest: first?.shiftDate ?? null,
+      reports: submitted.map((r, i) => {
+        const rows = entriesByReport[i] ?? []
+        const segment = SHIFTS.find((s) => s.key === r.shiftKey)!
+        return {
+          _id: r._id,
+          shiftDate: r.shiftDate,
+          shiftKey: r.shiftKey,
+          label: segment.label,
+          hours: segment.hours,
+          building: buildingName.get(r.buildingId) ?? '—',
+          summary: r.summary ?? '',
+          importantInfo: r.importantInfo ?? '',
+          submittedAt: r.submittedAt ?? r.startedAt,
+          interactions: rows.filter((x) => logOf(x.kind, x.log) === 'interaction').length,
+          events: rows.filter((x) => logOf(x.kind, x.log) === 'event').length,
+          significant: rows.filter((x) => x.significant).length,
+          cameraReview: rows.some((x) => x.cameraReview),
+        }
+      }),
+    }
+  },
+})
+
 /** One submitted report in full, with its log entries. */
 export const get = query({
   args: { reportId: v.id('shiftReports') },
@@ -349,14 +423,17 @@ export const start = mutation({
     now: v.number(),
     tzOffsetMinutes: v.number(),
   },
+  returns: v.id('shiftReports'),
   handler: async (ctx, args): Promise<Id<'shiftReports'>> => {
     const staff = await requireCapability(ctx, 'wellness')
+    assertBuildingAccess(staff, args.buildingId)
+    if (!(await ctx.db.get(args.buildingId))) throw new Error('That building no longer exists.')
 
     const existing = await ctx.db
       .query('shiftReports')
       .withIndex('by_author_status', (q) => q.eq('authorId', staff._id).eq('status', 'draft'))
       .first()
-    if (existing) return existing._id
+    if (existing) return scoped(staff, existing, 'That shift report no longer exists.')._id
 
     const { key, shiftDate } = shiftAt(args.now, args.tzOffsetMinutes)
 

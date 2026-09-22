@@ -88,11 +88,18 @@ export function validateUsername(username: string): void {
      tenancy          intake, room moves, exits, editing a resident's record
      checks           room and building check sign-off, work orders
      wellness         wellness checks, shift reports, services, visitors
+     medications      medication orders and the administration record
 
    `config` and `building-config` are deliberately separate. A building manager
    runs their own sites' rooms without being handed the staff directory or the
    ability to delete a building, and that distinction is what makes the role
    expressible here rather than as an `if (role === …)` somewhere downstream.
+
+   `medications` is the one line the four care roles do not share. Resident
+   Support Workers, Home Support Workers and trained Health Care Aides support
+   medication on shift; Wellness Workers
+   do mental-health support and never touch the medication cupboard, and a MAR
+   that lets them chart a dose is a MAR a funder will ask about.
    ------------------------------------------------------------------------ */
 
 export type Capability =
@@ -104,6 +111,7 @@ export type Capability =
   | 'tenancy'
   | 'checks'
   | 'wellness'
+  | 'medications'
 
 export type Role =
   | 'admin'
@@ -112,17 +120,20 @@ export type Role =
   | 'rsw'
   | 'wellness'
   | 'home-support'
+  | 'health-care-aide'
 
 /** Strictly nested: admin ⊃ building-manager ⊃ coordinator ⊃ the care roles. */
 export const CAPABILITIES: Record<Role, Capability[]> = {
-  admin: ['config', 'building-config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
-  'building-manager': ['building-config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
-  coordinator: ['site-config', 'money', 'care', 'tenancy', 'checks', 'wellness'],
-  // The three care roles carry the same authority and differ in the duties
-  // they are asked to complete on shift — see `DUTIES` below.
-  rsw: ['care', 'checks', 'wellness'],
+  admin: ['config', 'building-config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness', 'medications'],
+  'building-manager': ['building-config', 'site-config', 'money', 'care', 'tenancy', 'checks', 'wellness', 'medications'],
+  coordinator: ['site-config', 'money', 'care', 'tenancy', 'checks', 'wellness', 'medications'],
+  // The four care roles carry the same authority on everything but the
+  // medication record, and differ in the duties they are asked to complete on
+  // shift — see `DUTIES` below.
+  rsw: ['care', 'checks', 'wellness', 'medications'],
   wellness: ['care', 'checks', 'wellness'],
-  'home-support': ['care', 'checks', 'wellness'],
+  'home-support': ['care', 'checks', 'wellness', 'medications'],
+  'health-care-aide': ['care', 'checks', 'wellness', 'medications'],
 }
 
 export const ROLE_LABEL: Record<Role, string> = {
@@ -132,6 +143,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   rsw: 'Resident Support Worker',
   wellness: 'Wellness Worker',
   'home-support': 'Home Support Worker',
+  'health-care-aide': 'Health Care Aide',
 }
 
 /**
@@ -198,6 +210,22 @@ export const DUTIES: Record<string, { title: string; icon: string; accent: strin
       { key: 'med-pass', label: 'Medication pass', meta: 'Transfer of function', icon: 'pill' },
       { key: 'meals', label: 'Meal and feeding support', meta: 'Monitor intake', icon: 'notes' },
       { key: 'observations', label: 'Observation log', meta: 'Document changes', icon: 'file-text' },
+    ],
+  },
+  // Community Builders HCA posting #484, September 2026:
+  // https://communitybuilders.ca/job-listing/484-health-care-aide-temporary-part-time
+  'health-care-aide': {
+    title: 'Daily living & care support',
+    icon: 'heart-pulse',
+    accent: 'teal',
+    items: [
+      { key: 'hca-personal-care', label: 'Personal hygiene & dressing', meta: 'Bathing, grooming and personal equipment', icon: 'user-check' },
+      { key: 'hca-mobility', label: 'Transfers & toileting', meta: 'Mobility and elimination support per care plan', icon: 'user-check' },
+      { key: 'hca-nutrition', label: 'Meals & hydration', meta: 'Positioning, feeding assistance and intake observations', icon: 'notes' },
+      { key: 'hca-observations', label: 'Health observations & escalation', meta: 'Record physical, cognitive or behavioural changes; report significant concerns', icon: 'file-text' },
+      { key: 'hca-delegated-care', label: 'Delegated care & dressing assistance', meta: 'Follow the care plan; delegated tasks require transfer-of-function training', icon: 'heart' },
+      { key: 'hca-follow-up', label: 'Care-team & appointment follow-up', meta: 'Share observations, support medical follow-ups and connect residents to resources', icon: 'calendar' },
+      { key: 'hca-safety', label: 'Equipment & environment safety', meta: 'Check equipment and report unsafe conditions', icon: 'shield-check' },
     ],
   },
   wellness: {

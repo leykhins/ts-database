@@ -6,7 +6,7 @@ import type StatCard from '~/components/ds/StatCard.vue'
 /**
  * The Care Console's four numbers, chosen by the role standing the shift.
  *
- * The three care roles share a console and an authority, but not a job. An
+ * The four care roles share a console and an authority, but not a job. An
  * RSW walks the building, so leads with the round and the rooms; a Wellness
  * Worker carries the care plans, so leads with whether the people most at risk
  * have been seen; a Home Support Worker does the personal care and the med
@@ -129,6 +129,13 @@ const tiles = computed<Tile[]>(() => {
   switch (d.me.role) {
     case 'wellness':
       return [wellness, criticalSeenTile, offRound, duties]
+    case 'health-care-aide':
+      return [duties, criticalSeenTile, checks, {
+        key: 'observations', icon: 'file-text', accent: 'blue',
+        label: 'My shift entries', value: d.me.entryCount,
+        sublabel: `${d.me.significantCount} significant · observations and handover`,
+        to: '/care/report',
+      }]
     case 'home-support':
       return [checks, duties, criticalNeeds, wellness]
     // RSW, and anyone else who opens the console — the reference layout.

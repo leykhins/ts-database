@@ -28,6 +28,7 @@ export const AREAS: Area[] = [
   // Oversight starts at the building; a shift starts at the people.
   { to: '/', icon: 'layout-dashboard', label: 'Home', audience: 'oversight' },
   { to: '/care', icon: 'clipboard-check', label: 'Care Console', exact: true, audience: 'frontline' },
+  { to: '/care/history', icon: 'calendar', label: 'My Shifts', audience: 'frontline' },
 
   // Written on shift, read by oversight — both need it.
   { to: '/care/reports', icon: 'file-text', label: 'Shift Reports', audience: 'everyone' },
@@ -37,6 +38,7 @@ export const AREAS: Area[] = [
   { to: '/checks', icon: 'shield-check', label: 'Room Checks', audience: 'everyone' },
   { to: '/support', icon: 'traffic-cone', label: 'Support Levels', audience: 'everyone' },
   { to: '/critical', icon: 'heart-pulse', label: 'Critical Needs', audience: 'everyone', badge: 'criticalNeeds' },
+  { to: '/medications', icon: 'pill', label: 'Medications', audience: 'everyone' },
   { to: '/maintenance', icon: 'wrench', label: 'Maintenance', audience: 'everyone' },
 
   // The money and the returns. Nobody on a care shift is asked for these.

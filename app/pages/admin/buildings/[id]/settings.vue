@@ -462,7 +462,17 @@ const readOnly = computed(() => !can('site-config'))
               <div class="text-xs text-muted-foreground">{{ round.detail }}</div>
             </div>
 
-            <DsField v-slot="{ id }" label="Every (minutes)" class="w-[140px]">
+            <!--
+              Medication has no frequency to set. Its slots are the times this
+              site's residents are actually due, taken from their orders in the
+              MAR — a number here would only ever disagree with them.
+            -->
+            <DsField
+              v-if="round.routine !== 'meds'"
+              v-slot="{ id }"
+              label="Every (minutes)"
+              class="w-[140px]"
+            >
               <Input
                 :id="id"
                 v-model="round.every"
@@ -470,10 +480,17 @@ const readOnly = computed(() => !can('site-config'))
                 :disabled="readOnly || !round.enabled"
               />
             </DsField>
+            <div v-else class="w-[140px] text-xs text-muted-foreground">
+              Set by each resident's medication orders.
+            </div>
 
             <div class="flex w-[150px] flex-col gap-1">
               <span class="text-xs text-muted-foreground">
-                {{ round.enabled ? everyLabel(Number(round.every)) : 'Not run at this site' }}
+                {{
+                  !round.enabled ? 'Not run at this site'
+                  : round.routine === 'meds' ? 'From resident orders'
+                  : everyLabel(Number(round.every))
+                }}
               </span>
               <label class="flex items-center gap-2 text-sm">
                 <Switch v-model="round.enabled" :disabled="readOnly" />

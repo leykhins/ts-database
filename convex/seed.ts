@@ -107,6 +107,8 @@ export const runInternal = internalMutation({
  * exist, which then surface as blank names on the next seeded run.
  */
 const OPERATIONAL_TABLES = [
+  'medicationAdministrations',
+  'medications',
   'shiftLogParticipants',
   'shiftLogEntries',
   'shiftReports',
@@ -416,6 +418,7 @@ async function seed(ctx: MutationCtx) {
   }
 
   await seedCare(ctx, now)
+  await seedMedications(ctx, now)
 
   return {
     skipped: false,
@@ -660,3 +663,165 @@ function monthLabel(ts: number): string {
   const d = new Date(ts)
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
 }
+
+/* ------------------------------------------------------------------------
+   Medications
+   ------------------------------------------------------------------------ */
+
+/** A small formulary the seed draws from. Fictional residents, real drugs. */
+const FORMULARY: {
+  name: string
+  strength: string
+  dose: string
+  route: 'oral' | 'inhaled' | 'topical' | 'sublingual' | 'injection'
+  times: number[]
+  instructions?: string
+}[] = [
+  { name: 'Metformin', strength: '500 mg', dose: '1 tablet', route: 'oral', times: [8 * 60, 18 * 60], instructions: 'With food' },
+  { name: 'Quetiapine', strength: '100 mg', dose: '1 tablet', route: 'oral', times: [21 * 60] },
+  { name: 'Methadone', strength: '10 mg/ml', dose: '60 mg', route: 'oral', times: [9 * 60], instructions: 'Witnessed; check ID' },
+  { name: 'Salbutamol', strength: '100 mcg', dose: '2 puffs', route: 'inhaled', times: [8 * 60, 14 * 60, 20 * 60] },
+  { name: 'Ramipril', strength: '5 mg', dose: '1 capsule', route: 'oral', times: [8 * 60] },
+  { name: 'Olanzapine', strength: '10 mg', dose: '1 tablet', route: 'oral', times: [21 * 60] },
+  { name: 'Insulin glargine', strength: '100 u/ml', dose: '18 units', route: 'injection', times: [21 * 60], instructions: 'Rotate site' },
+  { name: 'Betamethasone', strength: '0.1%', dose: 'Thin layer', route: 'topical', times: [8 * 60, 20 * 60], instructions: 'Affected areas only' },
+]
+
+const PRN_FORMULARY = [
+  { name: 'Acetaminophen', strength: '500 mg', dose: '2 tablets', indication: 'Pain or fever', max: 4 },
+  { name: 'Lorazepam', strength: '1 mg', dose: '1 tablet', indication: 'Acute anxiety', max: 2 },
+  { name: 'Naloxone', strength: '4 mg', dose: '1 spray', indication: 'Suspected opioid overdose', max: undefined },
+]
+
+/**
+ * Orders and a week of charting for residents on the programme.
+ *
+ * High- and critical-support residents are put on the programme where the
+ * seed has not already said so, given one to three orders, and charted for
+ * the past seven days — almost all given, a scatter of refusals, and today
+ * left partly done so the board has something due and something overdue on
+ * it. Nothing is charted against a slot that has not come yet.
+ */
+async function seedMedications(ctx: MutationCtx, now: number, tzOffsetMinutes = 0) {
+  const tenants = await ctx.db.query('tenants').collect()
+  const staff = await ctx.db.query('users').first()
+
+  const localDay = (ts: number) => new Date(ts - tzOffsetMinutes * 60_000).toISOString().slice(0, 10)
+  const today = localDay(now)
+  const nowMinutes = (() => {
+    const local = new Date(now - tzOffsetMinutes * 60_000)
+    return local.getUTCHours() * 60 + local.getUTCMinutes()
+  })()
+  const atLocal = (date: string, minutes: number) => {
+    const [y, m, d] = date.split('-').map(Number)
+    return Date.UTC(y!, m! - 1, d!, 0, minutes) + tzOffsetMinutes * 60_000
+  }
+
+  let onProgramme = 0
+  let orders = 0
+  let doses = 0
+
+  for (const [i, tenant] of tenants.entries()) {
+    if (tenant.status !== 'current') continue
+    const high = tenant.supportLevel === 'high' || tenant.supportLevel === 'critical'
+    const flagged = tenant.health?.careRxProgram === true
+    if (!high && !flagged) continue
+
+    if (!flagged) {
+      await ctx.db.patch(tenant._id, { health: { ...(tenant.health ?? {}), careRxProgram: true } })
+    }
+    onProgramme++
+
+    const existing = await ctx.db
+      .query('medications')
+      .withIndex('by_tenant', (q) => q.eq('tenantId', tenant._id))
+      .first()
+    if (existing) continue
+
+    const count = 1 + (i % 3)
+    const startDate = localDay(now - (30 + (i % 90)) * DAY)
+
+    for (let k = 0; k < count; k++) {
+      const drug = FORMULARY[(i + k * 3) % FORMULARY.length]!
+      const medicationId = await ctx.db.insert('medications', {
+        tenantId: tenant._id,
+        buildingId: tenant.buildingId,
+        name: drug.name,
+        strength: drug.strength,
+        dose: drug.dose,
+        route: drug.route,
+        ...(drug.instructions ? { instructions: drug.instructions } : {}),
+        times: drug.times,
+        prn: false,
+        startDate,
+        ...(staff ? { createdBy: staff._id } : {}),
+      })
+      orders++
+
+      for (let back = 7; back >= 0; back--) {
+        const date = localDay(now - back * DAY)
+        for (const t of drug.times) {
+          // Today: chart what is comfortably past, leave the rest — one order
+          // per resident skips its last past slot so the board shows overdue.
+          if (back === 0) {
+            if (t + 60 > nowMinutes) continue
+            if (k === 0 && t + 180 > nowMinutes) continue
+          }
+          const refused = (i + k + back + t) % 17 === 0
+          const held = !refused && (i + k + back + t) % 29 === 0
+          await ctx.db.insert('medicationAdministrations', {
+            medicationId,
+            tenantId: tenant._id,
+            buildingId: tenant.buildingId,
+            date,
+            scheduledMinutes: t,
+            outcome: refused ? 'refused' : held ? 'held' : 'given',
+            ...(refused ? { reason: 'Declined — said he had already taken it' } : {}),
+            ...(held ? { reason: 'Asleep; could not be roused safely' } : {}),
+            // Mostly within a few minutes of the slot; now and then a dose goes
+            // in late, or is written up an hour after it went in.
+            givenAt: atLocal(date, t + ((i + t + back) % 11 === 0 ? 95 : ((i + t) % 25) - 5)),
+            recordedAt: atLocal(date, t + ((i + t + back) % 11 === 0 ? 95 : ((i + t) % 25) - 5) + ((i + back) % 7 === 0 ? 70 : 2)),
+            ...(staff ? { recordedBy: staff._id } : {}),
+          })
+          doses++
+        }
+      }
+    }
+
+    // Every third programme resident also has something as-needed.
+    if (i % 3 === 0) {
+      const prn = PRN_FORMULARY[i % PRN_FORMULARY.length]!
+      await ctx.db.insert('medications', {
+        tenantId: tenant._id,
+        buildingId: tenant.buildingId,
+        name: prn.name,
+        strength: prn.strength,
+        dose: prn.dose,
+        route: 'oral',
+        times: [],
+        prn: true,
+        prnIndication: prn.indication,
+        ...(prn.max !== undefined ? { prnMaxPerDay: prn.max } : {}),
+        startDate,
+        ...(staff ? { createdBy: staff._id } : {}),
+      })
+      orders++
+    }
+  }
+
+  return { onProgramme, orders, doses }
+}
+
+/**
+ * Medication data only — orders and a week of charting — for a deployment
+ * that was seeded before the MAR existed:
+ *
+ *     npx convex run seed:medicationsOnly '{"tzOffsetMinutes": 420}'
+ */
+export const medicationsOnly = internalMutation({
+  args: { tzOffsetMinutes: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    return await seedMedications(ctx, Date.now(), args.tzOffsetMinutes ?? 0)
+  },
+})

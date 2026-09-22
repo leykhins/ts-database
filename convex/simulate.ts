@@ -187,6 +187,8 @@ async function fillRoutines(
   let written = 0
   for (const setting of settings) {
     if (!setting.enabled) continue
+    // Medication is not walked as a round — its slots come from the MAR.
+    if (setting.routine === 'meds') continue
 
     for (const slot of shiftSlots(setting.everyMinutes, shift.from, shift.to)) {
       const startsAt = atLocal(date, slot.startMinutes, tz)

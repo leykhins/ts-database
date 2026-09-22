@@ -162,8 +162,24 @@ describe('the demo simulator', () => {
 })
 
 describe('the medication round', () => {
-  test('counts the residents it is actually for', async () => {
+  test('counts the doses it is actually for', async () => {
     const { t, as, buildingId, worker } = await setup(30)
+
+    // The programme flag alone puts nobody on the round; orders do. Two
+    // residents, three doses between them inside the morning shift, one after.
+    await t.run(async (ctx) => {
+      const tenants = await ctx.db
+        .query('tenants')
+        .withIndex('by_building', (q) => q.eq('buildingId', buildingId))
+        .take(2)
+      const order = (tenantId: (typeof tenants)[number]['_id'], times: number[]) =>
+        ctx.db.insert('medications', {
+          tenantId, buildingId, name: 'Metformin', dose: '1 tablet', route: 'oral',
+          times, prn: false, startDate: '2026-01-01',
+        })
+      await order(tenants[0]!._id, [8 * 60, 18 * 60])
+      await order(tenants[1]!._id, [9 * 60, 14 * 60])
+    })
 
     const board = await as(worker).query(api.routines.board, {
       buildingId,
@@ -171,9 +187,8 @@ describe('the medication round', () => {
       tzOffsetMinutes: TZ,
     })
 
-    // Every third resident of 30 is on the programme.
     const meds = board!.rows.find((r) => r.routine === 'meds')!
-    expect(meds.subjectCount).toBe(10)
+    expect(meds.subjectCount).toBe(3)
 
     // The building rounds are the building, not a number of people.
     expect(board!.rows.find((r) => r.routine === 'rounds')!.subjectCount).toBeNull()

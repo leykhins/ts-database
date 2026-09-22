@@ -19,6 +19,7 @@ export type NotificationKind =
   | 'visitor'
   | 'check'
   | 'pet'
+  | 'medication'
 
 export const NOTIFICATION_KIND: Record<NotificationKind, { icon: string; label: string }> = {
   routine: { icon: 'clipboard-check', label: 'Rounds' },
@@ -28,6 +29,7 @@ export const NOTIFICATION_KIND: Record<NotificationKind, { icon: string; label: 
   visitor: { icon: 'user-plus', label: 'Visitors' },
   check: { icon: 'shield-check', label: 'Room checks' },
   pet: { icon: 'heart', label: 'Pets' },
+  medication: { icon: 'pill', label: 'Medications' },
 }
 
 /** Severity reads as colour and nothing else — the words carry the meaning. */

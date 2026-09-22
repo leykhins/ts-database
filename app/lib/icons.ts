@@ -58,6 +58,10 @@ function icon(name: string) {
 export const Check = icon('check')
 export const ChevronDown = icon('chevron-down')
 export const ChevronRight = icon('chevron-right')
+export const ChevronLeft = icon('chevron-left')
+export const ChevronLeftIcon = ChevronLeft
+export const ChevronRightIcon = ChevronRight
+export const CalendarIcon = icon('calendar')
 export const ChevronUp = icon('chevron-up')
 export const Circle = icon('circle')
 export const X = icon('x')

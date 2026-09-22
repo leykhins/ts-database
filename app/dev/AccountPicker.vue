@@ -48,6 +48,7 @@ const ACCOUNTS = [
   { username: 'test.rsw', name: 'Devon Mraz', role: 'Resident Support Worker', icon: 'user-check' },
   { username: 'test.wellness', name: 'Nia Okonkwo', role: 'Wellness Worker', icon: 'heart-pulse' },
   { username: 'test.support', name: 'Bo Tran', role: 'Home Support Worker', icon: 'home' },
+  { username: 'test.hca', name: 'Jamie Chen', role: 'Health Care Aide', icon: 'heart-pulse' },
 ]
 
 const emit = defineEmits<{ fill: [{ username: string; password: string }] }>()

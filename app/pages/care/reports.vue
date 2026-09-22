@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 
 /** Shift Reports — the handover archive, newest first. */
 const { selected } = useSelectedBuilding()
+const { isFrontline } = useMe()
 
 const { data, isLoading } = useConvexQuery(api.shiftReports.list, () => ({
   ...(selected.value ? { buildingId: selected.value } : {}),
@@ -32,6 +33,10 @@ const CONFIRMATIONS = [
       description="Every handover on file for this building. What happened, what was outstanding, and who carried it."
     >
       <template #actions>
+        <Button v-if="isFrontline" variant="outline" @click="navigateTo('/care/history')">
+          <DsIcon name="calendar" :size="17" />
+          My shifts
+        </Button>
         <Button variant="primary" @click="navigateTo('/care/report')">
           <DsIcon name="file-text" :size="17" />
           My shift report

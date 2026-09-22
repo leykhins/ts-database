@@ -9,6 +9,7 @@ export type Capability =
   | 'tenancy'
   | 'checks'
   | 'wellness'
+  | 'medications'
 
 /**
  * The roles, mirroring `convex/model.ts`. `short` is the badge-length form, for
@@ -22,6 +23,7 @@ export const ROLES = [
   { value: 'rsw', label: 'Resident Support Worker', short: 'RSW' },
   { value: 'wellness', label: 'Wellness Worker', short: 'Wellness' },
   { value: 'home-support', label: 'Home Support Worker', short: 'Home Support' },
+  { value: 'health-care-aide', label: 'Health Care Aide', short: 'HCA' },
 ] as const
 
 export type RoleValue = (typeof ROLES)[number]['value']
@@ -44,6 +46,7 @@ export const CAPABILITY_LABEL: Record<Capability, string> = {
   tenancy: 'Intake, room moves and exits',
   checks: 'Room checks and work orders',
   wellness: 'Wellness checks and shift reports',
+  medications: 'Medication orders and the administration record',
 }
 
 /**
@@ -55,7 +58,7 @@ export const CAPABILITY_LABEL: Record<Capability, string> = {
  * client believed.
  */
 /** The roles whose home screen is the Care Console rather than the ops dashboard. */
-export const FRONTLINE_ROLES: RoleValue[] = ['rsw', 'wellness', 'home-support']
+export const FRONTLINE_ROLES: RoleValue[] = ['rsw', 'wellness', 'home-support', 'health-care-aide']
 
 export function useMe() {
   const { data: me, isLoading } = useConvexQuery(api.users.me)
