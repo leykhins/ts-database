@@ -14,6 +14,8 @@ import { SHIFTS, recomputeTenantRollups, requireAdmin, shiftAt } from './model'
  */
 
 const DAY = 86_400_000
+/** Community Builders demo sites are in Pacific daylight time in September. */
+const DEMO_TZ_OFFSET_MINUTES = 420
 
 type Level = 'independent' | 'moderate' | 'high' | 'critical'
 
@@ -453,8 +455,8 @@ async function seed(ctx: MutationCtx) {
     await recomputeTenantRollups(ctx, tenant._id)
   }
 
-  await seedCare(ctx, now)
-  await seedMedications(ctx, now)
+  await seedCare(ctx, now, DEMO_TZ_OFFSET_MINUTES)
+  await seedMedications(ctx, now, DEMO_TZ_OFFSET_MINUTES)
 
   return {
     skipped: false,
