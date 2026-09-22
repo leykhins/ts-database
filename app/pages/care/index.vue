@@ -4,12 +4,12 @@ import type { Id } from '../../../convex/_generated/dataModel'
 import { formatShortDate } from '~/utils/format'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { toast } from 'vue-sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 /**
  * Care Console — the home screen for a Resident Support Worker, Wellness
- * Worker or Home Support Worker.
+ * Worker, Home Support Worker or Health Care Aide.
  *
  * Two layouts were tried side by side; this is the one that was kept. A main
  * column for what has to be read and acted on, and a right column for the two
@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
  */
 const { selected } = useSelectedBuilding()
 const { me, can, denied } = useMe()
+const isHealthCareAide = computed(() => me.value?.role === 'health-care-aide')
 
 const now = useNow()
 const tz = new Date().getTimezoneOffset()
@@ -36,7 +37,7 @@ const { data: desk } = useConvexQuery(api.visitors.board, () => ({
 
 usePageHeader(() => ({
   eyebrow: data.value ? `${data.value.building.name} · ${data.value.current.label}` : '',
-  title: 'Care Console',
+  title: isHealthCareAide.value ? 'Health Care Aide' : 'Care Console',
 }))
 
 const { mutate: setDuty } = useConvexMutation(api.care.setDuty)
@@ -122,22 +123,31 @@ function segmentNote(segment: { state: string, done: number, missed: number }): 
   return segment.missed ? `${segment.missed} missed` : 'All checked'
 }
 
-const dutiesDone = computed(() => {
-  const state = data.value?.me.dutyState ?? {}
-  return (data.value?.me.duties ?? []).filter((d) => state[d.key]).length
-})
-
+const savingDuty = ref(false)
 async function toggleDuty(key: string, done: boolean) {
-  const reportId = data.value?.me.reportId
-  if (!reportId) return openReport()
-  await setDuty({ reportId, duty: key, done })
+  if (!data.value || savingDuty.value) return
+  savingDuty.value = true
+  try {
+    const reportId = data.value.me.reportId ?? await startReport({
+      buildingId: data.value.building._id, now: Date.now(), tzOffsetMinutes: tz,
+    })
+    await setDuty({ reportId, duty: key, done })
+  } catch (error) {
+    toast.error('Could not save duty', { description: (error as Error).message })
+  } finally {
+    savingDuty.value = false
+  }
 }
 
 async function openReport() {
   const buildingId = data.value?.building._id
   if (!buildingId) return
-  await startReport({ buildingId, now: Date.now(), tzOffsetMinutes: tz })
-  await navigateTo('/care/report')
+  try {
+    await startReport({ buildingId, now: Date.now(), tzOffsetMinutes: tz })
+    await navigateTo('/care/report')
+  } catch (error) {
+    toast.error('Could not open shift report', { description: (error as Error).message })
+  }
 }
 
 /** Log-entry kinds that read as a site emergency rather than a resident note. */
@@ -195,6 +205,9 @@ const KIND_LABEL: Record<string, string> = {
 
     <template v-else>
       <TsGreeting :site="data.building.name" />
+      <p v-if="isHealthCareAide" class="-mt-2 max-w-3xl text-sm text-muted-foreground">
+        Support daily living, observe changes in residents’ health, and share what the care team needs to know.
+      </p>
 
       <!--
         The shift in four numbers, chosen for the role on shift — see
@@ -206,7 +219,45 @@ const KIND_LABEL: Record<string, string> = {
       <div class="grid items-start gap-5 lg:grid-cols-[1.55fr_1fr]">
         <!-- ============================================== MAIN =========== -->
         <div class="flex min-w-0 flex-col gap-5">
-          <DsPanel title="The rest of today" subtitle="The shifts either side of yours.">
+          <template v-if="isHealthCareAide">
+            <DsPanel
+              title="Residents to see next"
+              subtitle="Outstanding wellness checks, ordered by urgency. Open a resident’s record for their care information."
+              :count="data.queue.length"
+            >
+              <p v-if="!data.queue.length" class="flex items-center gap-2 text-sm text-muted-foreground">
+                <DsIcon name="check-circle-2" :size="17" />
+                Everyone has been seen this shift. Continue care and record any changes.
+              </p>
+              <div
+                v-for="row in data.queue.slice(0, 5)" :key="row.tenantId"
+                class="flex items-center gap-3 border-t border-[var(--border-subtle)] py-3 first:border-0"
+              >
+                <TsResidentAvatar
+                  :name="row.name" :tenant-id="row.tenantId" :photo-url="row.photoUrl"
+                  :room="row.room" :support-level="row.supportLevel" :critical="row.critical" size="sm"
+                />
+                <div class="min-w-0 flex-1">
+                  <NuxtLink :to="`/tenants/${row.tenantId}`" class="block truncate text-sm font-semibold text-[var(--text-strong)] hover:underline">
+                    {{ row.name }}
+                  </NuxtLink>
+                  <p class="text-xs text-muted-foreground">Room {{ row.room }} · {{ row.critical ? 'Open critical need' : row.supportLevel + ' support' }}</p>
+                  <p class="mt-1 text-xs text-muted-foreground">{{ row.reason }}</p>
+                </div>
+                <Button size="sm" :disabled="!can('wellness')" :aria-label="`Log check for ${row.name}`" @click="openCheck(row)">
+                  Log check
+                </Button>
+              </div>
+              <p v-if="data.queue.length > 5" class="pt-2 text-xs text-muted-foreground">
+                {{ data.queue.length - 5 }} more to see — use the tenant roster for the full round.
+              </p>
+            </DsPanel>
+            <TsCareDuties
+              :shift="data.me" :role-label="me?.roleLabel" :disabled="!can('wellness') || savingDuty"
+              @toggle="toggleDuty"
+            />
+          </template>
+          <DsPanel v-if="!isHealthCareAide" title="The rest of today" subtitle="The shifts either side of yours.">
             <div
               v-for="segment in otherSegments"
               :key="segment.key + segment.shiftDate"
@@ -270,13 +321,13 @@ const KIND_LABEL: Record<string, string> = {
                     {{ data.flagged.length }}
                   </span>
                 </TabsTrigger>
-                <TabsTrigger value="banned" class="flex-1">
+                <TabsTrigger v-if="!isHealthCareAide" value="banned" class="flex-1">
                   Banned
                   <span v-if="desk?.banned.length" class="tnum ml-1 rounded-full bg-[var(--surface-sunken)] px-1.5 text-xs font-bold">
                     {{ desk.banned.length }}
                   </span>
                 </TabsTrigger>
-                <TabsTrigger value="overnight" class="flex-1">Overnight</TabsTrigger>
+                <TabsTrigger v-if="!isHealthCareAide" value="overnight" class="flex-1">Overnight</TabsTrigger>
               </TabsList>
 
               <TabsContent value="critical" class="mt-3">
@@ -478,7 +529,26 @@ const KIND_LABEL: Record<string, string> = {
 
         <!-- ============================================ SIDEBAR =========== -->
         <div class="flex min-w-0 flex-col gap-5">
-          <TsRoutineClock />
+          <DsPanel v-if="isHealthCareAide" title="Record & follow up" subtitle="Keep observations connected to the resident and the next shift.">
+            <div class="flex flex-col gap-2">
+              <Button variant="primary" :disabled="starting || !can('wellness')" class="justify-start" @click="openReport">
+                <DsIcon name="file-text" :size="16" /> Record a care observation
+              </Button>
+              <NuxtLink to="/care/reports" class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[var(--brand)] hover:bg-[var(--surface-sunken)]">
+                <DsIcon name="users" :size="16" /> Read care-team handover
+              </NuxtLink>
+              <NuxtLink to="/maintenance" class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[var(--brand)] hover:bg-[var(--surface-sunken)]">
+                <DsIcon name="wrench" :size="16" /> Report an equipment or safety concern
+              </NuxtLink>
+            </div>
+          </DsPanel>
+          <TsRoutineClock v-else />
+
+          <p v-if="isHealthCareAide" class="text-xs text-muted-foreground">
+            Medication support follows the care plan and transfer-of-function training. Record each dose in the medication tracker.
+          </p>
+
+          <TsMedicationTracker />
 
           <DsPanel
             title="Tenant roster"
@@ -553,44 +623,11 @@ const KIND_LABEL: Record<string, string> = {
             </template>
           </DsPanel>
 
-          <DsPanel
-            :title="data.me.dutyTitle"
-            :subtitle="`${me?.roleLabel} · a few things that keep the shift moving.`"
-            :count="`${dutiesDone}/${data.me.duties.length}`"
-          >
-            <label
-              v-for="duty in data.me.duties"
-              :key="duty.key"
-              class="flex cursor-pointer items-start gap-3 border-b border-[var(--border-subtle)] py-3 last:border-0"
-              :class="data.me.dutyState[duty.key] && 'is-done'"
-            >
-              <Checkbox
-                :model-value="!!data.me.dutyState[duty.key]"
-                :disabled="!can('wellness')"
-                class="mt-0.5"
-                @update:model-value="(v) => toggleDuty(duty.key, !!v)"
-              />
-              <span class="min-w-0 flex-1">
-                <span class="duty-label block text-sm font-medium text-[var(--text-strong)]">
-                  {{ duty.label }}
-                </span>
-                <span class="block text-xs text-[var(--text-subtle)]">{{ duty.meta }}</span>
-              </span>
-            </label>
-
-            <!--
-              Rounds are not a checkbox here. They are logged by walking them,
-              and a tick beside that record is a second place to claim the
-              same work — which is how the two come to disagree at handover.
-            -->
-            <div class="mt-3 border-t border-[var(--border-subtle)] pt-3">
-              <span class="eyebrow">From your shift activity</span>
-              <p class="mt-1.5 text-xs text-muted-foreground">
-                Building rounds and the perimeter are counted from the rounds card — logged
-                by walking them, not ticked off here.
-              </p>
-            </div>
-          </DsPanel>
+          <TsCareDuties
+            v-if="!isHealthCareAide"
+            :shift="data.me" :role-label="me?.roleLabel" :disabled="!can('wellness') || savingDuty"
+            @toggle="toggleDuty"
+          />
         </div>
       </div>
     </template>
@@ -602,13 +639,3 @@ const KIND_LABEL: Record<string, string> = {
     />
   </div>
 </template>
-
-<style scoped>
-/* A finished duty is struck through rather than removed: the list is also the
-   record of what this role owed the shift, and a task that vanishes when it is
-   done cannot be handed over. */
-.is-done .duty-label {
-  color: var(--text-muted);
-  text-decoration: line-through;
-}
-</style>

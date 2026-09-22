@@ -17,6 +17,7 @@ import type * as dashboard from "../dashboard.js";
 import type * as deposits from "../deposits.js";
 import type * as http from "../http.js";
 import type * as maintenance from "../maintenance.js";
+import type * as medications from "../medications.js";
 import type * as model from "../model.js";
 import type * as needs from "../needs.js";
 import type * as notifications from "../notifications.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   deposits: typeof deposits;
   http: typeof http;
   maintenance: typeof maintenance;
+  medications: typeof medications;
   model: typeof model;
   needs: typeof needs;
   notifications: typeof notifications;

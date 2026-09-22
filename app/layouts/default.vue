@@ -638,9 +638,8 @@ function submitSearch(value: string) {
 }
 
 /*
-  Below two usable columns the grid stops helping: a 420px search between two
-  shrinking tracks squeezes all three. The bar becomes rows, and the search
-  takes the full width it needs rather than a third of it.
+  On narrow screens, context and utilities share the first row. Search and
+  the page action share the second, leaving the shift details room to breathe.
 */
 @media (max-width: 900px) {
   .topbar {
@@ -652,6 +651,41 @@ function submitSearch(value: string) {
   .topbar__search {
     grid-column: 1 / -1;
     grid-row: 2;
+  }
+
+  .topbar__right {
+    display: contents;
+  }
+
+  .topbar__utilities {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .topbar__actions {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+  }
+
+  .topbar__actions:empty {
+    display: none;
+  }
+
+  .topbar:has(.topbar__actions:not(:empty)) .topbar__search {
+    grid-column: 1;
+  }
+
+  .topbar__context {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    gap: 8px;
+    padding-inline-end: 88px;
+  }
+
+  .topbar__date {
+    flex-shrink: 0;
   }
 
   .subbar__title {

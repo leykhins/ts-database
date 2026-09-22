@@ -643,6 +643,15 @@ const dialogTenant = computed(() =>
                       <p class="text-[var(--text-body)]">
                         {{ profile.health[detail.key] || 'Not recorded' }}
                       </p>
+                      <!-- The free-text list is the label; the MAR is the record. -->
+                      <NuxtLink
+                        v-if="detail.key === 'medications' && profile.health.careRxProgram"
+                        :to="`/medications/${tenantId}`"
+                        class="mt-1 inline-flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
+                      >
+                        <DsIcon name="pill" :size="14" />
+                        Open the medication administration record
+                      </NuxtLink>
                     </div>
                   </div>
                 </CardContent>

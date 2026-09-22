@@ -26,7 +26,7 @@ export const supportLevel = v.union(
  * buildings it is assigned to. See `model.ts` → `CAPABILITIES` for what each
  * one may actually write.
  *
- * The three care roles are the shift jobs the Care Console is built for. They
+ * The four care roles are the shift jobs the Care Console is built for. They
  * are separate roles rather than one "care staff" bucket because each carries a
  * different duty list on shift — rounds, personal care, care plans.
  */
@@ -37,6 +37,7 @@ export const staffRole = v.union(
   v.literal('rsw'), // Resident Support Worker
   v.literal('wellness'), // Wellness Worker (mental-health support)
   v.literal('home-support'), // Home Support Worker (personal care)
+  v.literal('health-care-aide'), // Health Care Aide (daily living and delegated care)
 )
 
 /**
@@ -180,6 +181,34 @@ export const routineKey = v.union(
   v.literal('rounds'),
   v.literal('perimeter'),
   v.literal('meds'),
+)
+
+/** How a medication is taken. Transcribed from the pharmacy label. */
+export const medicationRoute = v.union(
+  v.literal('oral'),
+  v.literal('sublingual'),
+  v.literal('topical'),
+  v.literal('inhaled'),
+  v.literal('injection'),
+  v.literal('eye-ear'),
+  v.literal('other'),
+)
+
+/**
+ * What happened to a dose. `given` is the only outcome that needs no reason;
+ * every other one is a dose that did not go in, and the record has to say why.
+ *
+ *   refused    offered and declined by the resident
+ *   held       withheld on staff judgement — asleep, unwell, vomiting
+ *   absent     the resident was not in the building
+ *   not-given  none of the above; the reason says what happened
+ */
+export const doseOutcome = v.union(
+  v.literal('given'),
+  v.literal('refused'),
+  v.literal('held'),
+  v.literal('absent'),
+  v.literal('not-given'),
 )
 
 export const tenancyStatus = v.union(
@@ -561,6 +590,8 @@ export default defineSchema({
   })
     .index('by_building_shift', ['buildingId', 'shiftDate', 'shiftKey'])
     .index('by_author_status', ['authorId', 'status'])
+    // A worker's own history, walked a month at a time.
+    .index('by_author_date', ['authorId', 'shiftDate'])
     .index('by_building_started', ['buildingId', 'startedAt']),
 
   /**
@@ -839,6 +870,91 @@ export default defineSchema({
     .index('by_building', ['buildingId'])
     .index('by_visitor', ['visitorId'])
     .index('by_tenant', ['tenantId']),
+
+  /**
+   * A medication order — one row per medication a resident is dispensed by
+   * staff. Transcribed from the pharmacy label at intake or when the pharmacy
+   * changes something; the app does not prescribe.
+   *
+   * `times` are minutes from local midnight, the same convention as meal
+   * sittings, so "8am" means 8am in the building. An empty list with `prn`
+   * set is an as-needed order: it has no slots to be late for, and each dose
+   * is charted with the reason it was given.
+   *
+   * Never deleted. A stopped order is discontinued with a reason and stays on
+   * the record, because "what was she on in March" is a question that gets
+   * asked.
+   */
+  medications: defineTable({
+    tenantId: v.id('tenants'),
+    buildingId: v.id('buildings'),
+    name: v.string(),
+    strength: v.optional(v.string()), // "500 mg"
+    dose: v.string(), // "1 tablet"
+    route: medicationRoute,
+    instructions: v.optional(v.string()), // "with food"
+    times: v.array(v.number()),
+    prn: v.boolean(),
+    prnIndication: v.optional(v.string()), // "for pain"
+    /** PRN only. Absent means no cap on file. */
+    prnMaxPerDay: v.optional(v.number()),
+    prescriber: v.optional(v.string()),
+    startDate: v.string(), // YYYY-MM-DD
+    endDate: v.optional(v.string()),
+    /**
+     * The order this one replaced, when a prescription changed. The old one is
+     * discontinued at the same moment, so the pair reads as one cutover: doses
+     * before it belong to the old order, doses after it to this one.
+     */
+    replaces: v.optional(v.id('medications')),
+    createdBy: v.optional(v.id('users')),
+    discontinuedAt: v.optional(v.number()),
+    discontinuedBy: v.optional(v.id('users')),
+    discontinuedReason: v.optional(v.string()),
+  })
+    .index('by_tenant', ['tenantId'])
+    .index('by_building', ['buildingId']),
+
+  /**
+   * The medication administration record. One row per dose event.
+   *
+   * Append-only, and corrected by voiding: a row is never edited or deleted.
+   * A mistake is struck through with a reason (`voidedAt` / `voidReason`) and
+   * a fresh row entered, so the sheet always shows what was charted, when, by
+   * whom, and what replaced it. That is the property that makes a MAR a record
+   * rather than a checklist.
+   *
+   * `scheduledMinutes` names the slot a dose was charted against; it is absent
+   * for a PRN dose. "Due" and "overdue" are computed at read time from the
+   * order's times — nothing writes a row saying a dose is expected.
+   */
+  medicationAdministrations: defineTable({
+    medicationId: v.id('medications'),
+    tenantId: v.id('tenants'),
+    buildingId: v.id('buildings'),
+    date: v.string(), // YYYY-MM-DD, in the building's local time
+    scheduledMinutes: v.optional(v.number()),
+    outcome: doseOutcome,
+    /** Why it was not given, or for a PRN dose, why it was. */
+    reason: v.optional(v.string()),
+    note: v.optional(v.string()),
+    /**
+     * When the dose actually went in (or was offered, for a refusal) — which
+     * is not when it was charted, and not when it was due. All three are kept
+     * because a MAR is asked all three questions: was it on time, was it
+     * written up at the time, and who wrote it. Optional only for rows charted
+     * before the field existed; those read `recordedAt` in its place.
+     */
+    givenAt: v.optional(v.number()),
+    recordedAt: v.number(),
+    recordedBy: v.optional(v.id('users')),
+    voidedAt: v.optional(v.number()),
+    voidedBy: v.optional(v.id('users')),
+    voidReason: v.optional(v.string()),
+  })
+    .index('by_building_date', ['buildingId', 'date'])
+    .index('by_medication_date', ['medicationId', 'date'])
+    .index('by_tenant_recorded', ['tenantId', 'recordedAt']),
 
   workOrders: defineTable({
     buildingId: v.id('buildings'),

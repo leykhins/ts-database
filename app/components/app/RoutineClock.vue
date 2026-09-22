@@ -13,9 +13,10 @@ import { toast } from 'vue-sonner'
  * up mid-task wants the second thing. So each round leads with the live hour
  * spelled out and dotted, with the strip beneath it for the shape of the shift.
  *
- * Medication carries a resident count as well, because it is the one round
- * whose size varies: rounds and the perimeter are the same building every time,
- * and twelve people needing their medication is a different job from three.
+ * Medication is the one round that is not a frequency. Its chips are the
+ * times this building's residents are actually due, read from the MAR, and it
+ * carries a dose count as well — rounds and the perimeter are the same
+ * building every time, and fifteen doses is a different job from three.
  */
 const { selected } = useSelectedBuilding()
 const { can, denied } = useMe()
@@ -60,6 +61,37 @@ function liveSlot(row: { slots: { startMinutes: number; status: string }[] }) {
     ?? row.slots.find((s) => s.status === 'upcoming')
     ?? null
   )
+}
+
+type Row = NonNullable<typeof data.value>['rows'][number]
+
+/**
+ * What a chip means, in the vocabulary of the round it belongs to: the
+ * building rounds are walked, medication is charted dose by dose.
+ */
+function slotTitle(
+  row: Row,
+  // `due` and `charted` ride along on the medication slots only, so they are
+  // optional here rather than forcing every caller through a discriminant.
+  slot: { startMinutes: number; status: string; due?: number; charted?: number },
+): string {
+  const at = formatMinutes(slot.startMinutes)
+  if (row.cadence !== 'orders') {
+    const state =
+      slot.status === 'done' ? 'walked'
+      : slot.status === 'missed' ? 'missed'
+      : slot.status === 'now' ? 'due now'
+      : 'later this shift'
+    return `${at} — ${state}`
+  }
+
+  const due = slot.due ?? 0
+  const charted = slot.charted ?? 0
+  const doses = `${due} dose${due === 1 ? '' : 's'}`
+  if (slot.status === 'done') return `${at} — ${doses}, all charted`
+  if (slot.status === 'missed') return `${at} — ${due - charted} of ${doses} never charted`
+  if (slot.status === 'now') return `${at} — ${due - charted} of ${doses} still to give`
+  return `${at} — ${doses} due later this shift`
 }
 
 async function log(routine: 'rounds' | 'perimeter' | 'meds', label: string) {
@@ -109,7 +141,9 @@ async function log(routine: 'rounds' | 'perimeter' | 'meds', label: string) {
             <span class="truncate text-sm font-semibold text-[var(--text-strong)]">
               {{ row.label }}
             </span>
-            <span class="shrink-0 text-xs text-muted-foreground">every {{ every(row.everyMinutes) }}</span>
+            <span class="shrink-0 text-xs text-muted-foreground">
+              {{ row.cadence === 'orders' ? 'from resident orders' : `every ${every(row.everyMinutes)}` }}
+            </span>
 
             <span class="flex-1" />
 
@@ -142,15 +176,16 @@ async function log(routine: 'rounds' | 'perimeter' | 'meds', label: string) {
             </span>
           </div>
 
-          <!-- Medication is the one round whose size is a number of people. -->
-          <div
+          <!-- Medication is the one round whose size is a number of doses. -->
+          <NuxtLink
             v-if="row.subjectCount !== null"
-            class="flex items-center gap-1.5 text-xs text-muted-foreground"
+            to="/medications"
+            class="flex items-center gap-1.5 text-xs text-muted-foreground hover:underline"
           >
             <DsIcon name="pill" :size="13" class="text-[var(--violet-600)]" />
             <span class="tnum font-semibold text-[var(--text-body)]">{{ row.subjectCount }}</span>
-            resident{{ row.subjectCount === 1 ? '' : 's' }} on dispensed medication
-          </div>
+            dose{{ row.subjectCount === 1 ? '' : 's' }} due this shift · open the MAR
+          </NuxtLink>
 
           <div class="flex flex-wrap items-center gap-1">
             <span
@@ -158,12 +193,27 @@ async function log(routine: 'rounds' | 'perimeter' | 'meds', label: string) {
               :key="slot.startMinutes"
               class="tnum inline-flex h-6 min-w-[26px] items-center justify-center rounded-sm border px-1.5 text-[11px] leading-none"
               :class="SLOT[slot.status]"
-              :title="`${formatMinutes(slot.startMinutes)} — ${slot.status === 'done' ? 'walked' : slot.status === 'missed' ? 'missed' : slot.status === 'now' ? 'due now' : 'later this shift'}`"
+              :title="slotTitle(row, slot)"
             >
               {{ slotLabel(slot.startMinutes) }}
             </span>
 
+            <!--
+              Medication has nothing to log here. Its slots are the MAR's own
+              dose times, and each dose is charted against the resident it was
+              given to — a "walked" tick beside that would be a second, vaguer
+              claim about the same work.
+            -->
+            <NuxtLink
+              v-if="row.cadence === 'orders'"
+              to="/medications"
+              class="ml-auto inline-flex h-6 items-center gap-1 rounded-sm px-2 text-xs font-semibold text-[var(--brand)] hover:underline"
+            >
+              <DsIcon name="pill" :size="13" />
+              Chart
+            </NuxtLink>
             <Button
+              v-else
               size="sm"
               variant="soft"
               class="ml-auto h-6 px-2 text-xs"

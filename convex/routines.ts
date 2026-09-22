@@ -4,6 +4,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import type { MutationCtx, QueryCtx } from './_generated/server'
 import { routineKey } from './schema'
 import { SHIFTS, requireCapability, requireStaff, resolveBuilding, shiftAt } from './model'
+import { medicationRoundSlots, scheduledDosesBetween } from './medications'
 
 /**
  * The rounds a shift repeats on the clock: building rounds, the perimeter,
@@ -222,22 +223,21 @@ export const board = query({
       .collect()
 
     /*
-       How many residents the medication round is actually for.
+       How many doses the medication round is actually for this shift.
 
-       `careRxProgram` is the managed-pharmacy flag captured at intake, which is
-       the closest thing on file to "staff dispense for this person". It is a
-       proxy, not a schedule: it cannot say a dose falls at 8pm rather than
-       noon. When per-resident medication records exist this becomes a count of
-       doses due in the slot, and only this block changes.
+       Read from the MAR — the orders and their times — rather than from the
+       programme flag on the resident, which could say who is dispensed for but
+       not when. Doses, not people: a round covering eleven residents on one
+       tablet and one on four is a round of fifteen.
     */
-    const onMedications = (
-      await ctx.db
-        .query('tenants')
-        .withIndex('by_building_status', (q) =>
-          q.eq('buildingId', building._id).eq('status', 'current'),
-        )
-        .collect()
-    ).filter((t) => t.health?.careRxProgram === true).length
+    const dosesThisShift = await scheduledDosesBetween(
+      ctx,
+      building._id,
+      shiftDate,
+      shift.from * 60,
+      shift.to * 60,
+      args.tzOffsetMinutes,
+    )
 
     const settings = await routinesFor(ctx, building._id)
     const rows = await Promise.all(
@@ -248,16 +248,29 @@ export const board = query({
           const last = await lastCompletion(ctx, building._id, s.routine)
           const by = last?.completedBy ? await ctx.db.get(last.completedBy) : null
 
-          const slots = slotsWithStatus(
-            s.everyMinutes,
-            shift,
-            shiftDate,
-            args.tzOffsetMinutes,
-            shiftCompletions
-              .filter((c) => c.routine === s.routine)
-              .map((c) => c.completedAt),
-            args.now,
-          )
+          // Medication is the one round whose slots are not a frequency. See
+          // `medicationRoundSlots` — they are the times this building's
+          // residents are actually due, taken from the MAR.
+          const slots =
+            s.routine === 'meds'
+              ? await medicationRoundSlots(
+                  ctx,
+                  building._id,
+                  shiftDate,
+                  shift,
+                  args.tzOffsetMinutes,
+                  args.now,
+                )
+              : slotsWithStatus(
+                  s.everyMinutes,
+                  shift,
+                  shiftDate,
+                  args.tzOffsetMinutes,
+                  shiftCompletions
+                    .filter((c) => c.routine === s.routine)
+                    .map((c) => c.completedAt),
+                  args.now,
+                )
 
           return {
             routine: s.routine,
@@ -265,14 +278,20 @@ export const board = query({
             detail: def.detail,
             icon: def.icon,
             everyMinutes: s.everyMinutes,
+            /**
+             * Where the slots came from. `orders` means the strip is the MAR's
+             * dose times and there is nothing to log here; `interval` means the
+             * site's frequency, walked and logged.
+             */
+            cadence: s.routine === 'meds' ? ('orders' as const) : ('interval' as const),
             lastAt: last?.completedAt ?? null,
             lastBy: by?.name ?? null,
             slots,
             done: slots.filter((x) => x.status === 'done').length,
             missed: slots.filter((x) => x.status === 'missed').length,
             total: slots.length,
-            /** Residents the round is for. Null where the round is the building. */
-            subjectCount: s.routine === 'meds' ? onMedications : null,
+            /** Doses the round is for this shift. Null where the round is the building. */
+            subjectCount: s.routine === 'meds' ? dosesThisShift : null,
             // No rolling due-state here. The slots carry it, and shipping both
             // invites two answers to "is this late" that can disagree.
           }
@@ -359,6 +378,15 @@ export const complete = mutation({
     const staff = await requireCapability(ctx, 'checks')
     const building = await resolveBuilding(ctx, staff, args.buildingId)
     if (!building) throw new Error('No building to log a round against.')
+
+    // Medication is charted dose by dose. A "round walked" row beside the MAR
+    // would be a second claim on the same work, and the two would disagree the
+    // first time somebody logged the round without charting a resident.
+    if (args.routine === 'meds') {
+      throw new Error(
+        'Medication is recorded dose by dose in the MAR, not logged as a round. Open Medications to chart it.',
+      )
+    }
 
     const settings = await routinesFor(ctx, building._id)
     const setting = settings.find((s) => s.routine === args.routine)

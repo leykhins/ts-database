@@ -12,6 +12,7 @@ import {
   shiftAt,
 } from './model'
 import { atLocal, graceMinutes, routinesFor, slotsWithStatus, ROUTINES } from './routines'
+import { overdueByResident } from './medications'
 
 /**
  * The bell.
@@ -33,7 +34,7 @@ export type Severity = 'high' | 'med' | 'low'
 
 export type Notification = {
   key: string
-  kind: 'routine' | 'need' | 'maintenance' | 'rent' | 'visitor' | 'check' | 'pet'
+  kind: 'routine' | 'need' | 'maintenance' | 'rent' | 'visitor' | 'check' | 'pet' | 'medication'
   severity: Severity
   title: string
   detail: string
@@ -82,6 +83,12 @@ export const feed = query({
       items.push(...(await urgentWorkOrders(ctx, buildingId, now)))
       items.push(...(await guestsStillIn(ctx, buildingId, now)))
       items.push(...(await unseenPets(ctx, buildingId, now)))
+    }
+
+    // Only the people who can chart a dose are told one is overdue. Telling a
+    // wellness worker leaves them holding an alarm they cannot clear.
+    if (can(staff, 'medications')) {
+      items.push(...(await overdueDoses(ctx, buildingId, now, args.tzOffsetMinutes)))
     }
 
     // Rent is not care information. A worker on the desk has no business being
@@ -148,6 +155,10 @@ async function overdueRoutines(
 
   for (const setting of settings) {
     if (!setting.enabled) continue
+    // Medication has its own line, per resident, from the MAR — see
+    // `overdueDoses`. Raising a round-missed item as well would tell somebody
+    // twice about the same uncharted dose.
+    if (setting.routine === 'meds') continue
     const def = ROUTINES.find((r) => r.key === setting.routine)!
 
     const slots = slotsWithStatus(
@@ -244,6 +255,38 @@ async function staleRoomChecks(
       href: '/checks',
     },
   ]
+}
+
+/**
+ * Doses past their window with nothing charted, one line per resident.
+ *
+ * The key carries the date and the earliest overdue slot, so a line read at
+ * 9am does not stay read when the noon dose is also missed — that is a new
+ * situation, and it comes back unread.
+ */
+async function overdueDoses(
+  ctx: QueryCtx,
+  buildingId: Id<'buildings'>,
+  now: number,
+  tzOffsetMinutes: number,
+): Promise<Notification[]> {
+  const overdue = await overdueByResident(ctx, buildingId, now, tzOffsetMinutes)
+  const out: Notification[] = []
+
+  for (const entry of overdue) {
+    const tenant = await ctx.db.get(entry.tenantId)
+    out.push({
+      key: `doses:${entry.tenantId}:${entry.date}:${entry.earliestMinutes}`,
+      kind: 'medication',
+      severity: 'high',
+      title: `${tenant?.name ?? 'A resident'} — ${entry.count} dose${entry.count === 1 ? '' : 's'} overdue`,
+      detail: `Nothing charted since the ${minutes(entry.earliestMinutes)} dose. Chart it, or record why it was not given.`,
+      at: atLocal(entry.date, entry.earliestMinutes, tzOffsetMinutes),
+      href: '/medications',
+    })
+  }
+
+  return out
 }
 
 async function openNeeds(

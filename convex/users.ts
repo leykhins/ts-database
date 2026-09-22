@@ -340,6 +340,7 @@ export const seedTestAccounts = internalAction({
       { username: 'test.rsw', name: 'Devon Mraz', role: 'rsw' as const },
       { username: 'test.wellness', name: 'Nia Okonkwo', role: 'wellness' as const },
       { username: 'test.support', name: 'Bo Tran', role: 'home-support' as const },
+      { username: 'test.hca', name: 'Jamie Chen', role: 'health-care-aide' as const },
     ]
 
     const buildingIds = await ctx.runQuery(internal.users.allBuildingIds, {})
