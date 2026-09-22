@@ -113,6 +113,8 @@ const OPERATIONAL_TABLES = [
   'shiftLogEntries',
   'shiftReports',
   'wellnessChecks',
+  'routineCompletions',
+  'notificationReads',
   'supportLevelChanges',
   'rentLedger',
   'depositEntries',
@@ -129,6 +131,7 @@ const OPERATIONAL_TABLES = [
   'visits',
   'visitors',
   'tenantContacts',
+  'placements',
   'siteSettings',
   'tenants',
   'rooms',
@@ -170,6 +173,39 @@ export const wipeAll = internalMutation({
       for (const row of rows) await ctx.db.delete(row._id)
     }
     return { wiped: OPERATIONAL_TABLES.length + AUTH_TABLES.length }
+  },
+})
+
+/**
+ * Delete a large demo deployment in small transactions.
+ *
+ * `wipeAll` is convenient on a fresh fixture, but a month of wellness and MAR
+ * history can exceed Convex's write limit if it is removed in one mutation.
+ * Re-run this function until `done` is true; children are always removed before
+ * their parents, including the Convex Auth tables.
+ */
+export const wipeAllBatch = internalMutation({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(500, Math.floor(args.limit ?? 300)))
+    let deleted = 0
+
+    for (const table of [...OPERATIONAL_TABLES, ...AUTH_TABLES]) {
+      if (deleted >= limit) break
+      const rows = await ctx.db.query(table).take(limit - deleted)
+      for (const row of rows) await ctx.db.delete(row._id)
+      deleted += rows.length
+    }
+
+    let done = true
+    for (const table of [...OPERATIONAL_TABLES, ...AUTH_TABLES]) {
+      if (await ctx.db.query(table).first()) {
+        done = false
+        break
+      }
+    }
+
+    return { deleted, done }
   },
 })
 
@@ -603,7 +639,10 @@ async function seedCare(ctx: MutationCtx, now: number, tzOffsetMinutes = 0) {
 
   // One submitted handover on the building the demo opens on.
   const first = buildings[0]
-  const anyStaff = await ctx.db.query('users').first()
+  const anyStaff = await ctx.db
+    .query('users')
+    .withIndex('by_username', (q) => q.eq('username', 'test.rsw'))
+    .unique()
   if (!first || !anyStaff) return
 
   const previous = SHIFTS[(index + SHIFTS.length - 1) % SHIFTS.length]!
@@ -704,7 +743,16 @@ const PRN_FORMULARY = [
  */
 async function seedMedications(ctx: MutationCtx, now: number, tzOffsetMinutes = 0) {
   const tenants = await ctx.db.query('tenants').collect()
-  const staff = await ctx.db.query('users').first()
+  const medicationStaff = (
+    await Promise.all(
+      ['test.rsw', 'test.support', 'test.hca', 'test.coordinator'].map((username) =>
+        ctx.db
+          .query('users')
+          .withIndex('by_username', (q) => q.eq('username', username))
+          .unique(),
+      ),
+    )
+  ).filter((staff) => staff !== null)
 
   const localDay = (ts: number) => new Date(ts - tzOffsetMinutes * 60_000).toISOString().slice(0, 10)
   const today = localDay(now)
@@ -754,7 +802,9 @@ async function seedMedications(ctx: MutationCtx, now: number, tzOffsetMinutes = 
         times: drug.times,
         prn: false,
         startDate,
-        ...(staff ? { createdBy: staff._id } : {}),
+        ...(medicationStaff.length
+          ? { createdBy: medicationStaff[(i + k) % medicationStaff.length]!._id }
+          : {}),
       })
       orders++
 
@@ -782,7 +832,12 @@ async function seedMedications(ctx: MutationCtx, now: number, tzOffsetMinutes = 
             // in late, or is written up an hour after it went in.
             givenAt: atLocal(date, t + ((i + t + back) % 11 === 0 ? 95 : ((i + t) % 25) - 5)),
             recordedAt: atLocal(date, t + ((i + t + back) % 11 === 0 ? 95 : ((i + t) % 25) - 5) + ((i + back) % 7 === 0 ? 70 : 2)),
-            ...(staff ? { recordedBy: staff._id } : {}),
+            ...(medicationStaff.length
+              ? {
+                  recordedBy:
+                    medicationStaff[(i + k + back + t) % medicationStaff.length]!._id,
+                }
+              : {}),
           })
           doses++
         }
@@ -804,7 +859,9 @@ async function seedMedications(ctx: MutationCtx, now: number, tzOffsetMinutes = 
         prnIndication: prn.indication,
         ...(prn.max !== undefined ? { prnMaxPerDay: prn.max } : {}),
         startDate,
-        ...(staff ? { createdBy: staff._id } : {}),
+        ...(medicationStaff.length
+          ? { createdBy: medicationStaff[i % medicationStaff.length]!._id }
+          : {}),
       })
       orders++
     }

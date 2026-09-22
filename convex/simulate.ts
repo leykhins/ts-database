@@ -4,6 +4,7 @@ import type { MutationCtx } from './_generated/server'
 import type { Doc, Id } from './_generated/dataModel'
 import { SHIFTS, localDate, shiftAt } from './model'
 import { atLocal, routinesFor, shiftSlots } from './routines'
+import { continueDemoDay } from './demoMonth'
 
 /**
  * Demo activity.
@@ -74,7 +75,7 @@ function outcomeFor(roll: number): Doc<'wellnessChecks'>['outcome'] {
 
 /** The demo staff whose names go on the synthetic records. */
 async function demoStaff(ctx: MutationCtx): Promise<Id<'users'>[]> {
-  const wanted = ['test.rsw', 'test.wellness', 'test.support']
+  const wanted = ['test.rsw', 'test.wellness', 'test.support', 'test.hca']
   const found: Id<'users'>[] = []
   for (const username of wanted) {
     const user = await ctx.db
@@ -302,12 +303,15 @@ export const tick = internalMutation({
       rounds += await fillRoutines(ctx, building, shiftDate, shift, tz, staff, progress)
     }
 
+    const ongoing = await continueDemoDay(ctx, now, tz)
+
     return {
       shiftDate,
       shift: shift.key,
       progress: Math.round(progress * 100),
       checks,
       rounds,
+      ...ongoing,
     }
   },
 })
