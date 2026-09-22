@@ -14,6 +14,7 @@ import type * as care from "../care.js";
 import type * as checks from "../checks.js";
 import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
+import type * as demoMonth from "../demoMonth.js";
 import type * as deposits from "../deposits.js";
 import type * as http from "../http.js";
 import type * as maintenance from "../maintenance.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   checks: typeof checks;
   crons: typeof crons;
   dashboard: typeof dashboard;
+  demoMonth: typeof demoMonth;
   deposits: typeof deposits;
   http: typeof http;
   maintenance: typeof maintenance;
