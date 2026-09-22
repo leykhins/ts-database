@@ -1,4 +1,4 @@
-import { ConvexClient } from 'convex/browser'
+import { ConvexClient, ConvexHttpClient } from 'convex/browser'
 import { api } from '../../convex/_generated/api'
 
 /**
@@ -33,6 +33,20 @@ export default defineNuxtPlugin((nuxtApp) => {
     // Nothing to warn about on unload: every mutation here is a discrete,
     // re-runnable action, and the warning fires on ordinary navigation.
     unsavedChangesWarning: false,
+  })
+
+  /**
+   * Authentication calls that must work without a valid access token use a
+   * separate HTTP client. In particular, the live client's auth callback must
+   * never call an action through that same client: the socket is waiting for
+   * the callback to return a refreshed token, so asking it to run the refresh
+   * action creates a deadlock and leaves every subscription loading forever.
+   *
+   * This mirrors @convex-dev/auth's React provider, which deliberately uses a
+   * fresh ConvexHttpClient for unauthenticated calls.
+   */
+  const authClient = new ConvexHttpClient(url || 'https://unconfigured.convex.cloud', {
+    logger: false,
   })
 
   // Namespace storage by deployment so two deployments on localhost don't
@@ -78,7 +92,7 @@ export default defineNuxtPlugin((nuxtApp) => {
       return null
     }
     try {
-      const result = (await client.action(api.auth.signIn as any, {
+      const result = (await authClient.action(api.auth.signIn as any, {
         refreshToken,
       })) as { tokens: Tokens | null }
       setTokens(result.tokens ?? null)
@@ -122,7 +136,7 @@ export default defineNuxtPlugin((nuxtApp) => {
     params: Record<string, unknown>,
     provider = 'password',
   ): Promise<void> => {
-    const result = (await client.action(api.auth.signIn as any, {
+    const result = (await authClient.action(api.auth.signIn as any, {
       provider,
       params,
     })) as { tokens?: Tokens | null; redirect?: string }
